@@ -131,8 +131,24 @@
       /* ── Row 1: page + device pickers (left), primary actions (right corner) ── */
       '<div class="ec-toolbar-row ec-row-main">' +
         '<div class="ec-pages">' +
-          PAGES.map((p) =>
-            `<button type="button" data-page="${p.file}" class="ec-page${p.file === 'index.html' ? ' is-active' : ''}">${p.label}</button>`).join('') +
+          (PAGES.length > 5
+            ? (() => {
+                const groups = { Main: [], Services: [], Galleries: [], Legal: [] };
+                PAGES.forEach((p) => {
+                  if (/^Service:/.test(p.label)) groups.Services.push(p);
+                  else if (/^Gallery:/.test(p.label)) groups.Galleries.push(p);
+                  else if (/Terms|Privacy/i.test(p.label)) groups.Legal.push(p);
+                  else groups.Main.push(p);
+                });
+                return '<select class="ec-pagesel" id="ecPageSel" title="Select a page to edit">' +
+                  Object.keys(groups).filter((g) => groups[g].length).map((g) =>
+                    `<optgroup label="${g}">` + groups[g].map((p) =>
+                      `<option value="${p.file}"${p.file === 'index.html' ? ' selected' : ''}>${p.label.replace(/^(Service|Gallery):\s*/, '')}</option>`).join('') +
+                    '</optgroup>').join('') +
+                  '</select>';
+              })()
+            : PAGES.map((p) =>
+                `<button type="button" data-page="${p.file}" class="ec-page${p.file === 'index.html' ? ' is-active' : ''}">${p.label}</button>`).join('')) +
         '</div>' +
         '<div class="ec-devices">' +
           Object.entries(DEVICES).map(([k, d]) =>
@@ -275,6 +291,7 @@
     currentPage = file;
     try { sessionStorage.setItem('ecPage', file); } catch { /* ignore */ }
     shell.querySelectorAll('.ec-page').forEach((b) => b.classList.toggle('is-active', b.dataset.page === file));
+    { const ps = shell.querySelector('#ecPageSel'); if (ps) ps.value = file; }
     applyPageScope();
     frameDoc = null;
     frame.removeAttribute('srcdoc');
@@ -282,11 +299,13 @@
     updateStatus();
   }
   shell.querySelectorAll('.ec-page').forEach((b) => b.addEventListener('click', () => switchPage(b.dataset.page)));
+  { const psel = shell.querySelector('#ecPageSel'); if (psel) psel.addEventListener('change', () => switchPage(psel.value)); }
   /* resume on the page the owner was last editing (survives the post-save reload) */
   const resumePage = sessionStorage.getItem('ecPage');
   if (resumePage && PAGES.some((p) => p.file === resumePage) && resumePage !== currentPage) {
     currentPage = resumePage;
     shell.querySelectorAll('.ec-page').forEach((b) => b.classList.toggle('is-active', b.dataset.page === currentPage));
+    { const ps = shell.querySelector('#ecPageSel'); if (ps) ps.value = currentPage; }
   }
   applyPageScope();
   frame.src = frameSrc(currentPage);   /* initial load (cache-busted) */
