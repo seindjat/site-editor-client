@@ -169,6 +169,7 @@
         '<span class="ec-sep"></span>' +
         '<button type="button" class="ec-cmt-toggle ec-refine-toggle ec-ai-primary" id="ecRefine" title="Chat with the AI to change the page — &quot;make it bigger&quot;, &quot;now more orange&quot;…">🪄 Refine with AI</button>' +
         '<button type="button" class="ec-help ec-ai-gear" id="ecAiSettings" title="AI model settings" aria-label="AI model settings">⚙</button>' +
+        '<button type="button" class="ec-help ec-key" id="ecChangePw" title="Change the owner password" aria-label="Change password">🔑</button>' +
         '<button type="button" class="ec-btn ec-mini ec-seo" id="ecSeo" title="Edit the page title, Google search description, and social-share preview text">🔎 SEO</button>' +
         /* Notes group — appears only once the owner has added a note (via a section).
            "Add note" now lives in the section click-menu, not as a toolbar toggle. */
@@ -1585,6 +1586,56 @@
     ov.addEventListener('click', (e) => { if (e.target === ov) close(); });
   }
   shell.querySelector('#ecHelp').addEventListener('click', openHelp);
+
+  /* ---------- Change owner password ---------- */
+  function openChangePw() {
+    const ov = document.createElement('div');
+    ov.className = 'ec-modal-ov';
+    ov.innerHTML =
+      '<div class="ec-modal ec-pw-modal">' +
+        '<h3>Change owner password</h3>' +
+        '<p class="ec-modal-sub">Sets a new password for editing this site. After it changes you\'ll sign in again with the new one.</p>' +
+        '<input type="password" class="ec-pw-input" id="ecPwNew" placeholder="New password" autocomplete="new-password">' +
+        '<input type="password" class="ec-pw-input" id="ecPwConfirm" placeholder="Confirm new password" autocomplete="new-password">' +
+        '<p class="ec-pw-err" id="ecPwErr"></p>' +
+        '<div class="ec-modal-row"><span></span><div>' +
+          '<button type="button" class="ec-modal-cancel" id="ecPwCancel">Cancel</button>' +
+          '<button type="button" class="ec-modal-save" id="ecPwSave">Change password</button>' +
+        '</div></div>' +
+      '</div>';
+    document.body.appendChild(ov);
+    const close = () => ov.remove();
+    const errEl = ov.querySelector('#ecPwErr');
+    const npEl = ov.querySelector('#ecPwNew');
+    npEl.focus();
+    ov.querySelector('#ecPwCancel').addEventListener('click', close);
+    ov.addEventListener('click', (e) => { if (e.target === ov) close(); });
+    ov.querySelector('#ecPwSave').addEventListener('click', async () => {
+      const n = npEl.value, c = ov.querySelector('#ecPwConfirm').value;
+      errEl.textContent = '';
+      if (n.length < 4) { errEl.textContent = 'Use at least 4 characters.'; return; }
+      if (n !== c) { errEl.textContent = 'The two passwords do not match.'; return; }
+      const sv = ov.querySelector('#ecPwSave'); sv.disabled = true; sv.textContent = 'Saving…';
+      try {
+        const r = await fetch(API + 'change-password', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: key, newPassword: n }),
+        });
+        if (!r.ok) { throw new Error((await r.text()) || r.status); }
+        try {
+          localStorage.removeItem((CFG.storePrefix || 'siteEdit') + 'EditAuth');
+          sessionStorage.removeItem((CFG.storePrefix || 'siteEdit') + 'EditActive');
+        } catch (e2) { /* ignore */ }
+        close();
+        alert('Password changed. Please sign in again with your new password.');
+        location.href = location.pathname;
+      } catch (e3) {
+        sv.disabled = false; sv.textContent = 'Change password';
+        errEl.textContent = 'Could not change password (' + e3.message + ').';
+      }
+    });
+  }
+  shell.querySelector('#ecChangePw').addEventListener('click', openChangePw);
 
   /* ---------- AI model settings (model picker + OpenRouter key) ---------- */
   function openAiSettings() {

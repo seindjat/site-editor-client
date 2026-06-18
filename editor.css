@@ -259,6 +259,10 @@ html.ec-frame section[hidden] { display: block !important; opacity: 0.4; outline
 .ec-pagesel:focus{outline:none;border-color:#F7941D}
 .ec-pagesel optgroup{color:#888;font-weight:700}
 .ec-pagesel option{color:#fff;background:#2a2a2e;font-weight:500}
+/* change-password modal */
+.ec-pw-input{display:block;width:100%;box-sizing:border-box;margin:10px 0 0;padding:10px 12px;border:1px solid #45454b;border-radius:8px;background:#2a2a2e;color:#fff;font:inherit;font-size:14px}
+.ec-pw-input:focus{outline:none;border-color:#F7941D}
+.ec-pw-err{color:#ff8a8a;font-size:13px;margin:8px 0 0;min-height:16px}
 /* link-edit toggle (shares the comment-toggle base) */
 .ec-link-toggle.is-active { background: #0d9488; border-color: #0d9488; }
 .ec-img-toggle.is-active { background: #7c3aed; border-color: #7c3aed; }
