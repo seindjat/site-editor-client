@@ -1731,13 +1731,26 @@
       '<button type="button" class="ec-modal-cancel" id="ecSeoCancel">Cancel</button>' +
       '<button type="button" class="ec-modal-save" id="ecSeoSave" disabled>Save</button></div></div></div>';
     document.body.appendChild(ov);
-    const close = () => ov.remove();
-    ov.querySelector('#ecSeoCancel').addEventListener('click', close);
-    ov.addEventListener('click', (e) => { if (e.target === ov) close(); });
     const body = ov.querySelector('#ecSeoBody'), saveBtn = ov.querySelector('#ecSeoSave'), msg = ov.querySelector('#ecSeoMsg');
+    const SEO_IDS = ['ecSeoTitle', 'ecSeoDesc', 'ecSeoOgTitle', 'ecSeoOgDesc'];
+    let seoOrig = null;
+    const seoDirty = () => !!seoOrig && SEO_IDS.some((id) => { const el = ov.querySelector('#' + id); return el && el.value !== seoOrig[id]; });
+    const refreshSave = () => { saveBtn.disabled = !seoDirty(); };
+    const destroy = () => { document.removeEventListener('keydown', onSeoKey, true); ov.remove(); };
+    const close = destroy;
+    const attemptClose = () => {
+      if (!seoDirty()) { destroy(); return; }
+      if (confirm('You have unsaved changes.\n\nOK = Save them    ·    Cancel = Discard them')) { saveBtn.click(); }
+      else { destroy(); }
+    };
+    function onSeoKey(e) { if (e.key === 'Escape') { e.preventDefault(); attemptClose(); } }
+    document.addEventListener('keydown', onSeoKey, true);
+    ov.querySelector('#ecSeoCancel').addEventListener('click', destroy);   /* Cancel = discard outright */
+    ov.addEventListener('click', (e) => { if (e.target === ov) attemptClose(); });   /* backdrop = protect like ESC */
     fetch(API + 'seo/get', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: key }) })
       .then((r) => r.ok ? r.json() : null).then((d) => {
         if (!d) { body.textContent = 'Could not load.'; return; }
+        seoOrig = { ecSeoTitle: d.title || '', ecSeoDesc: d.description || '', ecSeoOgTitle: d.ogTitle || '', ecSeoOgDesc: d.ogDescription || '' };
         body.innerHTML =
           seoField('ecSeoTitle', 'Page title', '(browser tab + Google headline · ~60 chars)', d.title, 0, 200) +
           seoField('ecSeoDesc', 'Search description', '(the grey text under your Google result · ~155 chars)', d.description, 3, 400) +
@@ -1748,10 +1761,10 @@
         const counts = { ecSeoTitle: 60, ecSeoDesc: 155, ecSeoOgTitle: 60, ecSeoOgDesc: 200 };
         ids.forEach((id) => {
           const inp = ov.querySelector('#' + id), c = ov.querySelector('#' + id + 'c');
-          const upd = () => { c.textContent = inp.value.length + (counts[id] ? '/' + counts[id] : ''); c.classList.toggle('over', counts[id] && inp.value.length > counts[id]); saveBtn.disabled = false; };
+          const upd = () => { c.textContent = inp.value.length + (counts[id] ? '/' + counts[id] : ''); c.classList.toggle('over', counts[id] && inp.value.length > counts[id]); refreshSave(); };
           inp.addEventListener('input', upd); upd();
         });
-        saveBtn.disabled = true;
+        refreshSave();
       }).catch(() => { body.textContent = 'Could not load.'; });
     saveBtn.addEventListener('click', async () => {
       saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
