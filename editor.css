@@ -200,8 +200,8 @@ html.ec-frame section[hidden] { display: block !important; opacity: 0.4; outline
 .ec-modal-save:disabled { background: #4a4a4f; color: rgba(255,255,255,0.45); cursor: not-allowed; box-shadow: none; }
 .ec-modal-save:disabled:hover { background: #4a4a4f; }
 .ec-seo-confirm { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 100010; }
-.ec-seo-confirm-box { background: #2a2a2e; color: #fff; border: 1px solid #45454b; border-radius: 12px; padding: 20px 22px; max-width: 340px; box-shadow: 0 10px 40px rgba(0,0,0,0.55); }
-.ec-seo-confirm-box p { margin: 0 0 16px; font-size: 14px; line-height: 1.5; }
+.ec-seo-confirm-box { background: #fff; color: var(--charcoal-deep, #2b2b2b); border-radius: 14px; padding: 20px 22px; max-width: 360px; box-shadow: 0 16px 50px rgba(0,0,0,0.4); }
+.ec-seo-confirm-box p { margin: 0 0 16px; font-size: 14px; line-height: 1.5; color: var(--charcoal-deep, #2b2b2b); }
 .ec-seo-confirm-row { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
 .ec-modal-cancel { background: none; border: 1px solid #bbb; color: var(--charcoal-deep, #2b2b2b); border-radius: 8px; padding: 10px 16px; font: 600 0.9rem var(--font-body, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif); cursor: pointer; }
 .ec-modal-del { background: none; border: 1px solid #D64541; color: #D64541; border-radius: 8px; padding: 10px 16px; font: 600 0.9rem var(--font-body, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif); cursor: pointer; }
