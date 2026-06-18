@@ -197,6 +197,8 @@ html.ec-frame section[hidden] { display: block !important; opacity: 0.4; outline
 .ec-modal-row > div { display: flex; gap: 10px; }
 .ec-modal-save { background: var(--orange, #f7941d); color: #fff; border: 0; border-radius: 8px; padding: 10px 18px; font: 700 0.9rem var(--font-body, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif); cursor: pointer; }
 .ec-modal-save:hover { background: var(--orange-dark, #d97b06); }
+.ec-modal-save:disabled { background: #4a4a4f; color: rgba(255,255,255,0.45); cursor: not-allowed; box-shadow: none; }
+.ec-modal-save:disabled:hover { background: #4a4a4f; }
 .ec-modal-cancel { background: none; border: 1px solid #bbb; color: var(--charcoal-deep, #2b2b2b); border-radius: 8px; padding: 10px 16px; font: 600 0.9rem var(--font-body, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif); cursor: pointer; }
 .ec-modal-del { background: none; border: 1px solid #D64541; color: #D64541; border-radius: 8px; padding: 10px 16px; font: 600 0.9rem var(--font-body, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif); cursor: pointer; }
 .ec-modal-hint { font: 500 0.78rem var(--font-body, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif); color: var(--muted, #8a8a8a); margin-top: 12px; text-align: right; }
