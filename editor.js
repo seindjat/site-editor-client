@@ -1739,9 +1739,24 @@
     const destroy = () => { document.removeEventListener('keydown', onSeoKey, true); ov.remove(); };
     const close = destroy;
     const attemptClose = () => {
+      const open = ov.querySelector('.ec-seo-confirm');
+      if (open) { open.remove(); return; }          /* ESC/backdrop again → dismiss the prompt (keep editing) */
       if (!seoDirty()) { destroy(); return; }
-      if (confirm('You have unsaved changes.\n\nOK = Save them    ·    Cancel = Discard them')) { saveBtn.click(); }
-      else { destroy(); }
+      const cf = document.createElement('div');
+      cf.className = 'ec-seo-confirm';
+      cf.innerHTML = '<div class="ec-seo-confirm-box">' +
+        '<p>You have unsaved changes. Save them before closing?</p>' +
+        '<div class="ec-seo-confirm-row">' +
+          '<button type="button" class="ec-modal-cancel" id="ecSeoKeep">Keep editing</button>' +
+          '<button type="button" class="ec-modal-cancel" id="ecSeoDiscard">Discard</button>' +
+          '<button type="button" class="ec-modal-save" id="ecSeoCfSave">Save changes</button>' +
+        '</div></div>';
+      ov.appendChild(cf);
+      cf.querySelector('#ecSeoKeep').addEventListener('click', () => cf.remove());
+      cf.querySelector('#ecSeoDiscard').addEventListener('click', () => { cf.remove(); destroy(); });
+      cf.querySelector('#ecSeoCfSave').addEventListener('click', () => { cf.remove(); saveBtn.click(); });
+      cf.addEventListener('click', (e) => { if (e.target === cf) cf.remove(); });   /* click prompt backdrop → keep editing */
+      const sv = cf.querySelector('#ecSeoCfSave'); if (sv) sv.focus();
     };
     function onSeoKey(e) { if (e.key === 'Escape') { e.preventDefault(); attemptClose(); } }
     document.addEventListener('keydown', onSeoKey, true);
