@@ -131,24 +131,8 @@
       /* ── Row 1: page + device pickers (left), primary actions (right corner) ── */
       '<div class="ec-toolbar-row ec-row-main">' +
         '<div class="ec-pages">' +
-          (PAGES.length > 5
-            ? (() => {
-                const groups = { Main: [], Services: [], Galleries: [], Legal: [] };
-                PAGES.forEach((p) => {
-                  if (/^Service:/.test(p.label)) groups.Services.push(p);
-                  else if (/^Gallery:/.test(p.label)) groups.Galleries.push(p);
-                  else if (/Terms|Privacy/i.test(p.label)) groups.Legal.push(p);
-                  else groups.Main.push(p);
-                });
-                return '<select class="ec-pagesel" id="ecPageSel" title="Select a page to edit">' +
-                  Object.keys(groups).filter((g) => groups[g].length).map((g) =>
-                    `<optgroup label="${g}">` + groups[g].map((p) =>
-                      `<option value="${p.file}"${p.file === 'index.html' ? ' selected' : ''}>${p.label.replace(/^(Service|Gallery):\s*/, '')}</option>`).join('') +
-                    '</optgroup>').join('') +
-                  '</select>';
-              })()
-            : PAGES.map((p) =>
-                `<button type="button" data-page="${p.file}" class="ec-page${p.file === 'index.html' ? ' is-active' : ''}">${p.label}</button>`).join('')) +
+          PAGES.map((p) =>
+            `<button type="button" data-page="${p.file}" class="ec-page${p.file === 'index.html' ? ' is-active' : ''}">${p.label}</button>`).join('') +
         '</div>' +
         '<div class="ec-devices">' +
           Object.entries(DEVICES).map(([k, d]) =>
@@ -169,7 +153,6 @@
         '<span class="ec-sep"></span>' +
         '<button type="button" class="ec-cmt-toggle ec-refine-toggle ec-ai-primary" id="ecRefine" title="Chat with the AI to change the page — &quot;make it bigger&quot;, &quot;now more orange&quot;…">🪄 Refine with AI</button>' +
         '<button type="button" class="ec-help ec-ai-gear" id="ecAiSettings" title="AI model settings" aria-label="AI model settings">⚙</button>' +
-        '<button type="button" class="ec-help ec-key" id="ecChangePw" title="Change the owner password" aria-label="Change password">🔑</button>' +
         '<button type="button" class="ec-btn ec-mini ec-seo" id="ecSeo" title="Edit the page title, Google search description, and social-share preview text">🔎 SEO</button>' +
         /* Notes group — appears only once the owner has added a note (via a section).
            "Add note" now lives in the section click-menu, not as a toolbar toggle. */
@@ -292,7 +275,6 @@
     currentPage = file;
     try { sessionStorage.setItem('ecPage', file); } catch { /* ignore */ }
     shell.querySelectorAll('.ec-page').forEach((b) => b.classList.toggle('is-active', b.dataset.page === file));
-    { const ps = shell.querySelector('#ecPageSel'); if (ps) ps.value = file; }
     applyPageScope();
     frameDoc = null;
     frame.removeAttribute('srcdoc');
@@ -300,13 +282,11 @@
     updateStatus();
   }
   shell.querySelectorAll('.ec-page').forEach((b) => b.addEventListener('click', () => switchPage(b.dataset.page)));
-  { const psel = shell.querySelector('#ecPageSel'); if (psel) psel.addEventListener('change', () => switchPage(psel.value)); }
   /* resume on the page the owner was last editing (survives the post-save reload) */
   const resumePage = sessionStorage.getItem('ecPage');
   if (resumePage && PAGES.some((p) => p.file === resumePage) && resumePage !== currentPage) {
     currentPage = resumePage;
     shell.querySelectorAll('.ec-page').forEach((b) => b.classList.toggle('is-active', b.dataset.page === currentPage));
-    { const ps = shell.querySelector('#ecPageSel'); if (ps) ps.value = currentPage; }
   }
   applyPageScope();
   frame.src = frameSrc(currentPage);   /* initial load (cache-busted) */
@@ -1272,8 +1252,7 @@
 
   async function startPreview(files, summary, changes, cost, cannot) {
     previewing = true; pendingFiles = files;
-    const keepY = frameScrollY();   /* remember where the owner is so the preview (and post-publish reload) stays put */
-    setFrameSrcdoc(await buildPreviewSrcdoc(files), keepY);
+    frame.srcdoc = await buildPreviewSrcdoc(files);
 
     let bar = shell.querySelector('.ec-preview-bar');
     if (!bar) {
@@ -1587,56 +1566,6 @@
   }
   shell.querySelector('#ecHelp').addEventListener('click', openHelp);
 
-  /* ---------- Change owner password ---------- */
-  function openChangePw() {
-    const ov = document.createElement('div');
-    ov.className = 'ec-modal-ov';
-    ov.innerHTML =
-      '<div class="ec-modal ec-pw-modal">' +
-        '<h3>Change owner password</h3>' +
-        '<p class="ec-modal-sub">Sets a new password for editing this site. After it changes you\'ll sign in again with the new one.</p>' +
-        '<input type="password" class="ec-pw-input" id="ecPwNew" placeholder="New password" autocomplete="new-password">' +
-        '<input type="password" class="ec-pw-input" id="ecPwConfirm" placeholder="Confirm new password" autocomplete="new-password">' +
-        '<p class="ec-pw-err" id="ecPwErr"></p>' +
-        '<div class="ec-modal-row"><span></span><div>' +
-          '<button type="button" class="ec-modal-cancel" id="ecPwCancel">Cancel</button>' +
-          '<button type="button" class="ec-modal-save" id="ecPwSave">Change password</button>' +
-        '</div></div>' +
-      '</div>';
-    document.body.appendChild(ov);
-    const close = () => ov.remove();
-    const errEl = ov.querySelector('#ecPwErr');
-    const npEl = ov.querySelector('#ecPwNew');
-    npEl.focus();
-    ov.querySelector('#ecPwCancel').addEventListener('click', close);
-    ov.addEventListener('click', (e) => { if (e.target === ov) close(); });
-    ov.querySelector('#ecPwSave').addEventListener('click', async () => {
-      const n = npEl.value, c = ov.querySelector('#ecPwConfirm').value;
-      errEl.textContent = '';
-      if (n.length < 4) { errEl.textContent = 'Use at least 4 characters.'; return; }
-      if (n !== c) { errEl.textContent = 'The two passwords do not match.'; return; }
-      const sv = ov.querySelector('#ecPwSave'); sv.disabled = true; sv.textContent = 'Saving…';
-      try {
-        const r = await fetch(API + 'change-password', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ password: key, newPassword: n }),
-        });
-        if (!r.ok) { throw new Error((await r.text()) || r.status); }
-        try {
-          localStorage.removeItem((CFG.storePrefix || 'siteEdit') + 'EditAuth');
-          sessionStorage.removeItem((CFG.storePrefix || 'siteEdit') + 'EditActive');
-        } catch (e2) { /* ignore */ }
-        close();
-        alert('Password changed. Please sign in again with your new password.');
-        location.href = location.pathname;
-      } catch (e3) {
-        sv.disabled = false; sv.textContent = 'Change password';
-        errEl.textContent = 'Could not change password (' + e3.message + ').';
-      }
-    });
-  }
-  shell.querySelector('#ecChangePw').addEventListener('click', openChangePw);
-
   /* ---------- AI model settings (model picker + OpenRouter key) ---------- */
   function openAiSettings() {
     const cur = getAiModel();
@@ -1731,41 +1660,13 @@
       '<button type="button" class="ec-modal-cancel" id="ecSeoCancel">Cancel</button>' +
       '<button type="button" class="ec-modal-save" id="ecSeoSave" disabled>Save</button></div></div></div>';
     document.body.appendChild(ov);
+    const close = () => ov.remove();
+    ov.querySelector('#ecSeoCancel').addEventListener('click', close);
+    ov.addEventListener('click', (e) => { if (e.target === ov) close(); });
     const body = ov.querySelector('#ecSeoBody'), saveBtn = ov.querySelector('#ecSeoSave'), msg = ov.querySelector('#ecSeoMsg');
-    const SEO_IDS = ['ecSeoTitle', 'ecSeoDesc', 'ecSeoOgTitle', 'ecSeoOgDesc'];
-    let seoOrig = null;
-    const seoDirty = () => !!seoOrig && SEO_IDS.some((id) => { const el = ov.querySelector('#' + id); return el && el.value !== seoOrig[id]; });
-    const refreshSave = () => { saveBtn.disabled = !seoDirty(); };
-    const destroy = () => { document.removeEventListener('keydown', onSeoKey, true); ov.remove(); };
-    const close = destroy;
-    const attemptClose = () => {
-      const open = ov.querySelector('.ec-seo-confirm');
-      if (open) { open.remove(); return; }          /* ESC/backdrop again → dismiss the prompt (keep editing) */
-      if (!seoDirty()) { destroy(); return; }
-      const cf = document.createElement('div');
-      cf.className = 'ec-seo-confirm';
-      cf.innerHTML = '<div class="ec-seo-confirm-box">' +
-        '<p>You have unsaved changes. Save them before closing?</p>' +
-        '<div class="ec-seo-confirm-row">' +
-          '<button type="button" class="ec-modal-cancel" id="ecSeoKeep">Keep editing</button>' +
-          '<button type="button" class="ec-modal-cancel" id="ecSeoDiscard">Discard</button>' +
-          '<button type="button" class="ec-modal-save" id="ecSeoCfSave">Save changes</button>' +
-        '</div></div>';
-      ov.appendChild(cf);
-      cf.querySelector('#ecSeoKeep').addEventListener('click', () => cf.remove());
-      cf.querySelector('#ecSeoDiscard').addEventListener('click', () => { cf.remove(); destroy(); });
-      cf.querySelector('#ecSeoCfSave').addEventListener('click', () => { cf.remove(); saveBtn.click(); });
-      cf.addEventListener('click', (e) => { if (e.target === cf) cf.remove(); });   /* click prompt backdrop → keep editing */
-      const sv = cf.querySelector('#ecSeoCfSave'); if (sv) sv.focus();
-    };
-    function onSeoKey(e) { if (e.key === 'Escape') { e.preventDefault(); attemptClose(); } }
-    document.addEventListener('keydown', onSeoKey, true);
-    ov.querySelector('#ecSeoCancel').addEventListener('click', destroy);   /* Cancel = discard outright */
-    ov.addEventListener('click', (e) => { if (e.target === ov) attemptClose(); });   /* backdrop = protect like ESC */
     fetch(API + 'seo/get', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: key }) })
       .then((r) => r.ok ? r.json() : null).then((d) => {
         if (!d) { body.textContent = 'Could not load.'; return; }
-        seoOrig = { ecSeoTitle: d.title || '', ecSeoDesc: d.description || '', ecSeoOgTitle: d.ogTitle || '', ecSeoOgDesc: d.ogDescription || '' };
         body.innerHTML =
           seoField('ecSeoTitle', 'Page title', '(browser tab + Google headline · ~60 chars)', d.title, 0, 200) +
           seoField('ecSeoDesc', 'Search description', '(the grey text under your Google result · ~155 chars)', d.description, 3, 400) +
@@ -1776,10 +1677,10 @@
         const counts = { ecSeoTitle: 60, ecSeoDesc: 155, ecSeoOgTitle: 60, ecSeoOgDesc: 200 };
         ids.forEach((id) => {
           const inp = ov.querySelector('#' + id), c = ov.querySelector('#' + id + 'c');
-          const upd = () => { c.textContent = inp.value.length + (counts[id] ? '/' + counts[id] : ''); c.classList.toggle('over', counts[id] && inp.value.length > counts[id]); refreshSave(); };
+          const upd = () => { c.textContent = inp.value.length + (counts[id] ? '/' + counts[id] : ''); c.classList.toggle('over', counts[id] && inp.value.length > counts[id]); saveBtn.disabled = false; };
           inp.addEventListener('input', upd); upd();
         });
-        refreshSave();
+        saveBtn.disabled = true;
       }).catch(() => { body.textContent = 'Could not load.'; });
     saveBtn.addEventListener('click', async () => {
       saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
