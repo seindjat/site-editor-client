@@ -3,6 +3,10 @@
    Reusable engine: everything site-specific comes from window.EDITOR_CONFIG
    (see examples/EDITOR_CONFIG.example.js). Relies on bootstrap globals from
    bootstrap.js: getEditKey(). Defines and runs the editor.
+
+   NOTE: editor.js is ASSEMBLED from the focused source files in client/editor/*.js
+   by deploy/build-editor.sh (publish-editor.sh runs it automatically). Edit the
+   piece you need under client/editor/ — do NOT hand-edit the built editor.js.
    ============================================================ */
 (function () {
   if (window.__ecBuilt) return;
