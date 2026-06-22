@@ -18,7 +18,7 @@
     try { var f = document.querySelector('iframe'); if (f) { var s = (f.getAttribute('src') || '').split('?')[0].split('/').pop(); if (s && /\.html$/.test(s)) return s; } } catch (e) {}
     return location.pathname.split('/').pop() || 'index.html';
   }
-  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function frameDoc() { var f = document.querySelector('iframe'); try { return f && f.contentDocument; } catch (e) { return null; } }
   function restoreScroll() {
     /* the loader stored where the owner was when they pressed ⌘E; re-apply it to the
@@ -257,10 +257,13 @@
   /* add a "✨ AI image" entry to the editor's click-an-element context menu, for images */
   var aiWiredDoc = null, lastImgFile = null;
   function wireImageAI() {
-    setInterval(function () {
-      var ifr = document.querySelector('iframe'), d = ifr && ifr.contentDocument;
-      if (d && d !== aiWiredDoc) { aiWiredDoc = d; try { d.addEventListener('click', onImgClick, true); } catch (e) {} }
-    }, 800);
+    var ifr = document.querySelector('iframe');
+    if (!ifr) { setTimeout(wireImageAI, 300); return; }   // wait for the editor to build its frame
+    function attach() {
+      try { var d = ifr.contentDocument; if (d && d !== aiWiredDoc) { aiWiredDoc = d; d.addEventListener('click', onImgClick, true); } } catch (e) {}
+    }
+    ifr.addEventListener('load', attach);   // re-attach on every page/preview (re)load — no forever-poll
+    attach();                                // and the doc that's already there
   }
   function onImgClick(e) {
     var img = e.target && e.target.closest && e.target.closest('img');
@@ -300,22 +303,24 @@
     if (!handle) return;
     handle.style.cursor = 'move';
     handle.style.userSelect = 'none';
-    var drag = false, sx = 0, sy = 0, ox = 0, oy = 0;
     handle.addEventListener('mousedown', function (e) {
       if (e.target.closest('.tbpv-x')) return;        // not when clicking the close button
       var r = p.getBoundingClientRect();
       p.style.left = r.left + 'px'; p.style.top = r.top + 'px';
       p.style.right = 'auto'; p.style.bottom = 'auto';
-      drag = true; sx = e.clientX; sy = e.clientY; ox = r.left; oy = r.top;
+      var sx = e.clientX, sy = e.clientY, ox = r.left, oy = r.top;
       e.preventDefault();
+      /* attach move/up only WHILE dragging and remove on release, so closing + reopening
+         the panel never piles up permanent document listeners */
+      function move(ev) {
+        var nx = Math.max(4, Math.min(window.innerWidth - 80, ox + (ev.clientX - sx)));
+        var ny = Math.max(4, Math.min(window.innerHeight - 30, oy + (ev.clientY - sy)));
+        p.style.left = nx + 'px'; p.style.top = ny + 'px';
+      }
+      function up() { document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up); }
+      document.addEventListener('mousemove', move);
+      document.addEventListener('mouseup', up);
     });
-    document.addEventListener('mousemove', function (e) {
-      if (!drag) return;
-      var nx = Math.max(4, Math.min(window.innerWidth - 80, ox + (e.clientX - sx)));
-      var ny = Math.max(4, Math.min(window.innerHeight - 30, oy + (e.clientY - sy)));
-      p.style.left = nx + 'px'; p.style.top = ny + 'px';
-    });
-    document.addEventListener('mouseup', function () { drag = false; });
   }
   function addStyle() {
     if (document.getElementById('tbpv-css')) return;

@@ -1156,7 +1156,14 @@
             if (!el) return;
             if (a.hidden) el.setAttribute('hidden', ''); else el.removeAttribute('hidden');
           });
-          if (footer) arrangement.forEach((a) => { const el = fresh[a.idx]; if (el) el.parentNode.insertBefore(el, footer); });
+          /* re-order the sections into the owner's chosen order. Anchor before the footer
+             if there is one; otherwise move each to the end of <body> in order (so reorder
+             still persists on pages with no <body > footer>). */
+          arrangement.forEach((a) => {
+            const el = fresh[a.idx];
+            if (!el) return;
+            if (footer) el.parentNode.insertBefore(el, footer); else doc.body.appendChild(el);
+          });
         }
         if (styleDirty) {
           /* persist all per-device overrides as a single <style> block in <head>;
@@ -1233,7 +1240,7 @@
   });
 
   function escapeHtml(s) {
-    return String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+    return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
   /* Build a static srcdoc preview of proposed files. Scripts are stripped (we never
      run the page's JS in a srcdoc); this page fades sections in via JS on scroll and
