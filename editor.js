@@ -1156,13 +1156,14 @@
             if (!el) return;
             if (a.hidden) el.setAttribute('hidden', ''); else el.removeAttribute('hidden');
           });
-          /* re-order the sections into the owner's chosen order. Anchor before the footer
-             if there is one; otherwise move each to the end of <body> in order (so reorder
-             still persists on pages with no <body > footer>). */
+          /* re-order the sections into the owner's chosen order. Anchor before the footer if
+             there is one, else before the first trailing <script> (so sections don't land
+             below the closing scripts), else append — works on pages with no <body > footer>.
+             insertBefore(el, null) === appendChild, so a null anchor is safe. */
+          const reorderAnchor = footer || doc.querySelector('body > script') || null;
           arrangement.forEach((a) => {
             const el = fresh[a.idx];
-            if (!el) return;
-            if (footer) el.parentNode.insertBefore(el, footer); else doc.body.appendChild(el);
+            if (el) el.parentNode.insertBefore(el, reorderAnchor);
           });
         }
         if (styleDirty) {
