@@ -116,23 +116,52 @@
     });
   }
 
-  /* © button: enter edit mode. Skips the prompt while the 30-day password is remembered. */
-  var btn = document.getElementById('editModeBtn');
-  if (btn) {
-    btn.addEventListener('click', function () {
-      rememberScroll();
-      if (window.getEditKey()) { sessionStorage.setItem(EDIT_ACTIVE, '1'); location.reload(); return; }
-      var pw = window.prompt('Owner password:');
-      if (!pw) return;
-      fetch(API + 'auth', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: pw }),
-      }).then(function (res) {
-        if (!res.ok) { alert('Wrong password.'); return; }
-        setEditKey(pw); sessionStorage.setItem(EDIT_ACTIVE, '1'); location.reload();
-      }).catch(function () { alert('Edit service is not reachable.'); });
-    });
+  /* © button: enter edit mode. Skips the prompt while the 30-day password is remembered.
+     Opens the editor IN PLACE — no full-page reload round-trip — so the click feels
+     immediate; an "Opening editor…" pill gives instant feedback while the editor files
+     download from the CDN (the old reload path looked dead until the editor reappeared,
+     which led to repeated clicks). An `arming` guard + the .ec-shell check stop a second
+     click from double-loading. */
+  var arming = false;
+  function showOpening() {
+    if (document.getElementById('ec-opening')) return;
+    var p = document.createElement('div');
+    p.id = 'ec-opening';
+    p.textContent = 'Opening editor…';
+    p.setAttribute('style',
+      'position:fixed;left:50%;top:18px;transform:translateX(-50%);z-index:2147483647;' +
+      'background:#111;color:#fff;font:600 14px/1 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;' +
+      'padding:11px 18px;border-radius:999px;box-shadow:0 6px 24px rgba(0,0,0,.35);pointer-events:none;');
+    document.body.appendChild(p);
+    var t0 = Date.now();
+    var iv = setInterval(function () {
+      if (document.querySelector('.ec-shell') || Date.now() - t0 > 12000) {
+        clearInterval(iv); if (p.parentNode) p.parentNode.removeChild(p);
+      }
+    }, 120);
   }
+  function startEditor() {
+    sessionStorage.setItem(EDIT_ACTIVE, '1');
+    showOpening();
+    getBuild().then(loadEditor);
+  }
+  function enterEditMode() {
+    if (arming || document.querySelector('.ec-shell')) return;   /* already opening / open */
+    rememberScroll();
+    if (window.getEditKey()) { arming = true; startEditor(); return; }
+    var pw = window.prompt('Owner password:');
+    if (!pw) return;
+    arming = true;
+    fetch(API + 'auth', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pw }),
+    }).then(function (res) {
+      if (!res.ok) { arming = false; alert('Wrong password.'); return; }
+      setEditKey(pw); startEditor();
+    }).catch(function () { arming = false; alert('Edit service is not reachable.'); });
+  }
+  var btn = document.getElementById('editModeBtn');
+  if (btn) btn.addEventListener('click', enterEditMode);
 
   /* Top-page keyboard shortcuts:
        Cmd/Ctrl+E → enter edit mode (keeps scroll position)

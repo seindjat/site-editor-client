@@ -277,7 +277,12 @@ html.ec-frame section[hidden] { display: block !important; opacity: 0.4; outline
 .ec-save:disabled { background: #54545c; color: #9a9aa2; box-shadow: none; cursor: not-allowed; }
 .ec-exit { background: none; border: 1px solid #555; color: #fff; }
 .ec-stage { flex: 1; overflow: auto; display: flex; justify-content: center; padding: 20px; }
-.ec-frame-el { border: 0; background: #fff; box-shadow: 0 10px 40px rgba(0,0,0,0.4); flex: none; }
+/* Default to the desktop device width so the iframe paints at desktop on (re)load,
+   BEFORE applyDevice() sets the live inline width. Without this the iframe falls back
+   to the ~300px HTML default = phone breakpoint, which flashed the phone layout for a
+   beat after every Save (full reload) before JS snapped it back to desktop. The inline
+   width set by applyDevice() still overrides this for the iPad / phone views. */
+.ec-frame-el { border: 0; background: #fff; box-shadow: 0 10px 40px rgba(0,0,0,0.4); flex: none; width: 1280px; }
 @media (max-width: 640px) { .ec-status { display: none; } }
 
 /* preview-before-publish bar */
