@@ -314,3 +314,5 @@ html.ec-frame section[hidden] { display: block !important; opacity: 0.4; outline
 .ec-hist-when em { color: var(--muted, #8a8a8a); font-style: normal; font-size: 0.8rem; }
 .ec-hist-restore { background: var(--orange-soft, #fff3e0); color: var(--orange-dark, #d97b06); border: 1px solid var(--orange, #f7941d); border-radius: 7px; padding: 6px 14px; font: 700 0.82rem var(--font-body, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif); cursor: pointer; }
 .ec-hist-restore:hover { background: var(--orange, #f7941d); color: #fff; }
+
+/* build 20260623-220838 */
