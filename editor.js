@@ -47,6 +47,10 @@
       /* per-device style edits snap to these max-width breakpoints (align to the site's
          own CSS breakpoints). Devices map: desktop→base, ipad/phoneL→tablet, phoneP→phone. */
       breakpoints: u.breakpoints || { tablet: 1024, phone: 600 },
+      /* Optional owner console (visitor stats + chat knowledge/leads), shown as
+         toolbar links when set. e.g. '/__kitchen-chat/console' — the editor opens
+         it at ?tab=analytics / ?tab=chat in a new tab. Omit on sites with no console. */
+      consoleUrl: u.consoleUrl || '',
     };
   })();
   const API = CFG.apiBase;
@@ -158,6 +162,14 @@
         '<button type="button" class="ec-cmt-toggle ec-refine-toggle ec-ai-primary" id="ecRefine" title="Chat with the AI to change the page — &quot;make it bigger&quot;, &quot;now more orange&quot;…">🪄 Refine with AI</button>' +
         '<button type="button" class="ec-help ec-ai-gear" id="ecAiSettings" title="AI model settings" aria-label="AI model settings">⚙</button>' +
         '<button type="button" class="ec-btn ec-mini ec-seo" id="ecSeo" title="Edit the page title, Google search description, and social-share preview text">🔎 SEO</button>' +
+        /* Owner console links (visitor stats + chat knowledge/leads) — only when CFG.consoleUrl
+           is set. Plain <a target=_blank> so a real user-gesture click opens a new tab (no popup
+           blocker), no reload dependency — replaces the old page-script floating pill. */
+        (CFG.consoleUrl
+          ? '<span class="ec-sep"></span>' +
+            '<a class="ec-btn ec-mini ec-console" id="ecStats" href="' + CFG.consoleUrl + '?tab=analytics" target="_blank" rel="noopener" title="Open your visitor statistics in a new tab">📊 Stats</a>' +
+            '<a class="ec-btn ec-mini ec-console" id="ecChatKb" href="' + CFG.consoleUrl + '?tab=chat" target="_blank" rel="noopener" title="Open the chat assistant’s knowledge &amp; recent leads in a new tab">💬 Chat</a>'
+          : '') +
         /* Notes group — appears only once the owner has added a note (via a section).
            "Add note" now lives in the section click-menu, not as a toolbar toggle. */
         '<span class="ec-notes-grp" id="ecNotesGroup" style="display:none">' +

@@ -271,6 +271,9 @@ html.ec-frame section[hidden] { display: block !important; opacity: 0.4; outline
 .ec-impl.ec-mini:disabled, .ec-impl.ec-mini:disabled:hover { background: #222; color: #5a5a62; border-color: #333; }
 .ec-undo, .ec-history { background: none; border: 1px solid #888; color: #fff; }
 .ec-undo:hover, .ec-history:hover { background: rgba(255,255,255,0.1); }
+/* owner console links (📊 Stats / 💬 Chat) — anchors styled as secondary toolbar buttons */
+.ec-console { background: none; border: 1px solid #888; color: #fff; text-decoration: none; display: inline-flex; align-items: center; }
+.ec-console:hover { background: rgba(255,255,255,0.1); color: #fff; }
 /* 💾 Save — the primary action: pushed right + made to pop */
 .ec-save { background: var(--orange, #f7941d); color: #fff; box-shadow: 0 2px 12px rgba(247,148,29,0.5); padding: 10px 18px; font-size: 13.5px; }
 .ec-save:hover:not(:disabled) { background: var(--orange-dark, #d97b06); }
