@@ -69,23 +69,44 @@
     } catch (e) { _buildP = Promise.resolve(fallback); }
     return _buildP;
   }
-  function urlFor(name, build) { return BASE + name + '?b=' + build; }
+  /* Prefer an IMMUTABLE jsDelivr URL pinned to the build's git tag
+     (cdn.jsdelivr.net/gh/user/repo@<build>/editor.js). Immutable refs are never
+     edge-stale and give every build a unique URL, so there's no jsDelivr-POP
+     mismatch and no browser-cache trap (the bug where ?b= changes but jsDelivr
+     keeps serving an old editor.js, since jsDelivr ignores the query for its edge
+     cache). Falls back to the mutable ?b= URL for a local editorBase, the editorV
+     fallback build, or if the tag 404s (a build.txt from before tagging). */
+  function immBase(build) {
+    var m = BASE.match(/^(https:\/\/cdn\.jsdelivr\.net\/gh\/[^@/]+\/[^@/]+)\/?$/);
+    return (m && build && build !== ('v' + V)) ? (m[1] + '@' + build + '/') : null;
+  }
+  function mutUrl(name, build) { return BASE + name + '?b=' + build; }
+  function urlFor(name, build) { var ib = immBase(build); return ib ? (ib + name) : mutUrl(name, build); }
 
   function injectCss(doc, build) {
     if (doc.getElementById('ec-css')) return;
     var l = doc.createElement('link');
     l.id = 'ec-css'; l.rel = 'stylesheet'; l.href = urlFor('editor.css', build);
+    l.onerror = function () { if (immBase(build)) l.href = mutUrl('editor.css', build); };
     doc.head.appendChild(l);
   }
 
   /* Load the full editor for the signed-in owner: CSS + engine + add-ons. The
      add-ons script self-gates (no-ops unless editing) and waits for the editor UI
-     itself, so load order between editor.js and editor-addons.js doesn't matter. */
+     itself, so load order between editor.js and editor-addons.js doesn't matter.
+     If the immutable @tag URL 404s (stale build.txt → an untagged build), retry
+     the same file at the mutable ?b= URL so the editor still loads. */
   function loadEditor(build) {
     injectCss(document, build);
     ['editor.js', 'editor-addons.js'].forEach(function (name) {
       var s = document.createElement('script');
       s.src = urlFor(name, build);
+      s.onerror = function () {
+        if (!immBase(build)) return;             // already mutable — nothing to fall back to
+        var s2 = document.createElement('script');
+        s2.src = mutUrl(name, build);
+        document.body.appendChild(s2);
+      };
       document.body.appendChild(s);
     });
   }
@@ -190,4 +211,4 @@
   }
 })();
 
-/* build 20260623-220838 */
+/* build 20260623-221953 */
