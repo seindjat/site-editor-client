@@ -182,7 +182,17 @@
     }).catch(function () { arming = false; alert('Edit service is not reachable.'); });
   }
   var btn = document.getElementById('editModeBtn');
-  if (btn) btn.addEventListener('click', enterEditMode);
+  if (btn) {
+    btn.addEventListener('click', enterEditMode);
+    /* Keep the owner's edit affordance clickable even when host chrome (a fixed
+       sticky CTA bar, a cookie banner, a chat FAB…) paints over the footer. The
+       button is visually transparent to visitors, so lifting it above such
+       overlays has no visible effect for them. */
+    try {
+      if (getComputedStyle(btn).position === 'static') btn.style.position = 'relative';
+      btn.style.zIndex = '2147483000';
+    } catch (e) { /* ignore */ }
+  }
 
   /* Top-page keyboard shortcuts:
        Cmd/Ctrl+E → enter edit mode (keeps scroll position)
@@ -211,4 +221,4 @@
   }
 })();
 
-/* build 20260705-131354 */
+/* build 20260705-142040 */
