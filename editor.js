@@ -117,6 +117,29 @@
      change didn't take. A fresh timestamp each (re)load guarantees fresh content. */
   function frameSrc(page) { return page + '?editframe=1&_=' + Date.now(); }
 
+  /* Inline text elements (h1–h4, p, li…) must never contain BLOCK markup. But
+     contentEditable inserts a <div> (or <p>) for every Enter, and pasting rich
+     text can drop blocks in too — an invalid <p><div>…</div></p> makes the browser
+     auto-close the <p>, kicking the content OUT of the styled element (wrong font,
+     no longer editable). This flattens any block child into a <br> line break so
+     what we store + save is always valid inline HTML. */
+  function normalizeEditableHTML(html) {
+    const tmp = document.createElement('div');
+    tmp.innerHTML = html == null ? '' : String(html);
+    let block, guard = 0;
+    while ((block = tmp.querySelector('div,p,section,article,header,footer,aside,main,nav')) && guard++ < 1000) {
+      const emptyLine = !block.textContent.trim() && block.querySelector('br') &&
+                        block.childNodes.length <= 2;
+      block.parentNode.insertBefore(document.createElement('br'), block);   // a block = a new line
+      if (!emptyLine) { while (block.firstChild) block.parentNode.insertBefore(block.firstChild, block); }
+      block.parentNode.removeChild(block);
+    }
+    return tmp.innerHTML
+      .replace(/(?:<br\s*\/?>){3,}/gi, '<br><br>')   // at most one blank line
+      .replace(/^(?:<br\s*\/?>)+/i, '')               // no leading blank lines
+      .replace(/(?:<br\s*\/?>)+$/i, '');              // no trailing blank lines
+  }
+
   function imgSlot(img) {
     const m = (img.getAttribute('src') || '').match(/assets\/([^?#"]+)/);
     return m && IMAGE_SLOTS[m[1]] ? m[1] : null;
@@ -1054,11 +1077,24 @@
     /* tag sections with their file-order index — a stable key for persisting
        reorder/hide onto a fresh server copy at save time */
     movableSections(doc).forEach((sec, i) => sec.setAttribute('data-ec-idx', i));
+    /* prefer <br> over a new <div>/<p> on Enter (Chrome/Firefox); Safari ignores
+       this, so the keydown handler below is the real cross-browser guarantee */
+    try { doc.execCommand('defaultParagraphSeparator', false, 'br'); } catch (e) { /* older browsers */ }
     [...doc.querySelectorAll(EDIT_SEL)].forEach((el, i) => {
       el.setAttribute('contenteditable', 'true');
       el.setAttribute('spellcheck', 'true');   /* browser red-underlines typos while editing */
       el.classList.add('ec-editable');
-      el.addEventListener('input', () => { dirty.set(i, el.innerHTML); updateStatus(); });
+      /* Enter = a line break (<br>), NOT a block <div>/<p> — a block inside an
+         inline text element is invalid and corrupts the element on save. */
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey && !e.isComposing) {
+          e.preventDefault();
+          el.ownerDocument.execCommand('insertLineBreak');
+        }
+      });
+      /* store a NORMALIZED copy so a stray block (paste, other browsers) never
+         reaches the saved file */
+      el.addEventListener('input', () => { dirty.set(i, normalizeEditableHTML(el.innerHTML)); updateStatus(); });
     });
     doc.addEventListener('click', (e) => {
       if (e.target.closest('.ec-cmt-btn')) { hideCtxBar(); return; }
@@ -1147,7 +1183,7 @@
         const src = await (await fetch(currentPage, { cache: 'no-store' })).text();
         const doc = new DOMParser().parseFromString(src, 'text/html');
         const targets = doc.querySelectorAll(EDIT_SEL);
-        dirty.forEach((html, i) => { if (targets[i]) targets[i].innerHTML = html; });
+        dirty.forEach((html, i) => { if (targets[i]) targets[i].innerHTML = normalizeEditableHTML(html); });
         const links = editableLinks(doc);
         linkEdits.forEach((v, i) => {
           const el = links[i];
@@ -1739,4 +1775,4 @@
   } catch { /* private mode */ }
 })();
 
-/* build 20260623-221953 */
+/* build 20260705-131354 */
