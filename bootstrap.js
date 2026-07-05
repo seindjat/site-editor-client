@@ -215,10 +215,18 @@
     }
   });
 
+  /* Extension-proof entry: opening the page with ?edit (or #edit) enters edit mode
+     directly — reliable when a browser extension hijacks Cmd/Ctrl+E (e.g. the Claude
+     for Chrome side panel) or the ✎ is covered/hard to find. Bookmark yoursite.com/?edit.
+     It prompts for the owner password just like the ✎, so it's safe to leave public. */
+  if (!IS_EDIT_FRAME && (/(?:^|[?&])edit(?:=[^&]*)?(?:&|$)/.test(location.search) || location.hash === '#edit')) {
+    enterEditMode();
+  }
+
   /* Owner is actively editing in this tab → load the editor on demand. */
   if (sessionStorage.getItem(EDIT_ACTIVE) && window.getEditKey() && !IS_EDIT_FRAME) {
     getBuild().then(loadEditor);
   }
 })();
 
-/* build 20260705-142040 */
+/* build 20260705-145319 */
