@@ -1833,9 +1833,12 @@
       consoleEsc = function (e) { if (e.key === 'Escape') closeConsole(); };
       document.addEventListener('keydown', consoleEsc);
     }
-    shell.querySelectorAll('.ec-console[data-console-tab]').forEach(function (b) {
-      b.addEventListener('click', function () { openConsole(b.getAttribute('data-console-tab')); });
+    /* Delegate on the document so wiring never depends on button-render timing or which
+       shell instance we bound to — any click on a console button opens the panel. */
+    document.addEventListener('click', function (e) {
+      var b = e.target && e.target.closest ? e.target.closest('.ec-console[data-console-tab]') : null;
+      if (b) { e.preventDefault(); openConsole(b.getAttribute('data-console-tab')); }
     });
   }
 
-/* build 20260706-212913 */
+/* build 20260706-213815 */
