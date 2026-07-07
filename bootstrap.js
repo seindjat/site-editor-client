@@ -43,6 +43,9 @@
   function setEditKey(pw) {
     try { localStorage.setItem(EDIT_KEY, JSON.stringify({ pw: pw, exp: Date.now() + EDIT_TTL })); } catch (e) { /* ignore */ }
   }
+  function clearEditKey() {
+    try { localStorage.removeItem(EDIT_KEY); } catch (e) { /* ignore */ }
+  }
 
   /* Save where the reader is right now (as a fraction of page height), so edit
      mode can open at the same spot instead of jumping to the top. */
@@ -166,20 +169,46 @@
     showOpening();
     getBuild().then(loadEditor);
   }
-  function enterEditMode() {
-    if (arming || document.querySelector('.ec-shell')) return;   /* already opening / open */
-    rememberScroll();
-    if (window.getEditKey()) { arming = true; startEditor(); return; }
+  /* Prompt for the owner password and authenticate. Shared by first sign-in and the
+     stale-key recovery path below. Assumes arming is already true. */
+  function promptAndAuth() {
     var pw = window.prompt('Owner password:');
-    if (!pw) return;
-    arming = true;
+    if (!pw) { arming = false; return; }
     fetch(API + 'auth', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ password: pw }),
     }).then(function (res) {
-      if (!res.ok) { arming = false; alert('Wrong password.'); return; }
-      setEditKey(pw); startEditor();
+      if (res.ok) { setEditKey(pw); startEditor(); return; }
+      arming = false;
+      alert(res.status === 401 ? 'Wrong password.' : 'Sign-in failed (' + res.status + '). Try again shortly.');
     }).catch(function () { arming = false; alert('Edit service is not reachable.'); });
+  }
+  function enterEditMode() {
+    if (arming || document.querySelector('.ec-shell')) return;   /* already opening / open */
+    rememberScroll();
+    arming = true;
+    var existing = window.getEditKey();
+    if (!existing) { promptAndAuth(); return; }
+    /* Revalidate the REMEMBERED key with the server BEFORE opening. The editor used to
+       open optimistically on any stored key — so after a password change/reset the
+       editor looked signed-in but every save/SEO/refine/chat silently 401'd (the owner
+       hit exactly this). Now a stale key is caught here, cleared, and re-prompted. */
+    fetch(API + 'auth', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: existing }),
+    }).then(function (res) {
+      if (res.ok) { startEditor(); return; }               /* remembered key still valid */
+      if (res.status === 401) {                             /* password changed → key is stale */
+        clearEditKey();
+        alert('Your saved sign-in is no longer valid (the password may have changed). Please sign in again.');
+        promptAndAuth();                                    /* arming stays true through the re-prompt */
+        return;
+      }
+      arming = false;                                       /* 429 / other — keep the key, let them retry */
+      alert('Edit service busy (' + res.status + '). Try again in a moment.');
+    }).catch(function () {
+      startEditor();                                        /* transient network blip → open optimistically */
+    });
   }
   var btn = document.getElementById('editModeBtn');
   if (btn) {
@@ -229,4 +258,4 @@
   }
 })();
 
-/* build 20260705-145319 */
+/* build 20260706-201258 */
