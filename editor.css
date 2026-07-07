@@ -183,6 +183,14 @@ html.ec-frame section[hidden] { display: block !important; opacity: 0.4; outline
 
 /* note editor modal (parent shell) */
 .ec-modal-ov { position: fixed; inset: 0; z-index: 100000; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; padding: 20px; }
+/* Owner console embedded panel (Chat + Stats) — the same-origin console in an in-editor iframe. */
+.ec-console-ov { position: fixed; inset: 0; z-index: 2147483600; background: rgba(0,0,0,0.55); display: flex; align-items: center; justify-content: center; padding: 24px; }
+.ec-console-panel { width: min(1120px, 95vw); height: min(820px, 90vh); background: #fff; border-radius: 14px; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 24px 70px rgba(0,0,0,0.45); }
+.ec-console-bar { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; padding: 11px 16px; background: #2E2D30; color: #fff; }
+.ec-console-ttl { font-weight: 500; font-size: 14px; }
+.ec-console-x { background: none; border: 0; color: #fff; font-size: 16px; line-height: 1; cursor: pointer; padding: 5px 9px; border-radius: 7px; }
+.ec-console-x:hover { background: rgba(255,255,255,0.16); }
+.ec-console-frame { flex: 1 1 auto; width: 100%; border: 0; display: block; background: #2E2D30; }
 /* note window: see-through backdrop + draggable by its header, so the owner can pull
    it aside and see the section they're noting */
 .ec-modal-ov-note { background: rgba(0,0,0,0.04); }
@@ -315,4 +323,4 @@ html.ec-frame section[hidden] { display: block !important; opacity: 0.4; outline
 .ec-hist-restore { background: var(--orange-soft, #fff3e0); color: var(--orange-dark, #d97b06); border: 1px solid var(--orange, #f7941d); border-radius: 7px; padding: 6px 14px; font: 700 0.82rem var(--font-body, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif); cursor: pointer; }
 .ec-hist-restore:hover { background: var(--orange, #f7941d); color: #fff; }
 
-/* build 20260706-202721 */
+/* build 20260706-212913 */

@@ -185,13 +185,13 @@
         '<button type="button" class="ec-cmt-toggle ec-refine-toggle ec-ai-primary" id="ecRefine" title="Chat with the AI to change the page — &quot;make it bigger&quot;, &quot;now more orange&quot;…">🪄 Refine with AI</button>' +
         '<button type="button" class="ec-help ec-ai-gear" id="ecAiSettings" title="AI model settings" aria-label="AI model settings">⚙</button>' +
         '<button type="button" class="ec-btn ec-mini ec-seo" id="ecSeo" title="Edit the page title, Google search description, and social-share preview text">🔎 SEO</button>' +
-        /* Owner console links (visitor stats + chat knowledge/leads) — only when CFG.consoleUrl
-           is set. Plain <a target=_blank> so a real user-gesture click opens a new tab (no popup
-           blocker), no reload dependency — replaces the old page-script floating pill. */
+        /* Owner console (visitor stats + chat knowledge/leads) — only when CFG.consoleUrl is
+           set. Buttons open the same-origin console as an IN-EDITOR panel (see 98-console.js)
+           so the owner stays in one place; it signs itself in via the shared owner key. */
         (CFG.consoleUrl
           ? '<span class="ec-sep"></span>' +
-            '<a class="ec-btn ec-mini ec-console" id="ecStats" href="' + CFG.consoleUrl + '?tab=analytics" target="_blank" rel="noopener" title="Open your visitor statistics in a new tab">📊 Stats</a>' +
-            '<a class="ec-btn ec-mini ec-console" id="ecChatKb" href="' + CFG.consoleUrl + '?tab=chat" target="_blank" rel="noopener" title="Open the chat assistant’s knowledge &amp; recent leads in a new tab">💬 Chat</a>'
+            '<button type="button" class="ec-btn ec-mini ec-console" id="ecStats" data-console-tab="analytics" title="Your visitor statistics">📊 Stats</button>' +
+            '<button type="button" class="ec-btn ec-mini ec-console" id="ecChatKb" data-console-tab="chat" title="The chat assistant’s knowledge &amp; recent leads">💬 Chat</button>'
           : '') +
         /* Notes group — appears only once the owner has added a note (via a section).
            "Add note" now lives in the section click-menu, not as a toolbar toggle. */
@@ -1802,5 +1802,40 @@
     }
   } catch { /* private mode */ }
 })();
+  /* ---------- Owner console panel (Chat + Stats), embedded in-editor ---------- */
+  /* The chat/stats console is a separate but SAME-ORIGIN app (chat_server.py /console). Rather
+     than open it in a new tab, embed it as an iframe panel so the owner never leaves the editor.
+     It signs itself in from the shared owner key (single sign-on) — no re-login — and ?embed=1
+     tells it to drop its own title bar so it reads as one surface, not a page-in-a-box. */
+  if (CFG.consoleUrl) {
+    let consoleOv = null, consoleEsc = null;
+    function closeConsole() {
+      if (consoleOv) { consoleOv.remove(); consoleOv = null; }
+      if (consoleEsc) { document.removeEventListener('keydown', consoleEsc); consoleEsc = null; }
+    }
+    function openConsole(tab) {
+      closeConsole();
+      const ov = document.createElement('div');
+      ov.className = 'ec-console-ov';
+      ov.innerHTML =
+        '<div class="ec-console-panel">' +
+          '<div class="ec-console-bar">' +
+            '<span class="ec-console-ttl">' + (tab === 'analytics' ? '📊 Visitor stats' : '💬 Chat & knowledge') + '</span>' +
+            '<button type="button" class="ec-console-x" title="Close (Esc)" aria-label="Close">✕</button>' +
+          '</div>' +
+          '<iframe class="ec-console-frame" title="Owner console" src="' +
+            CFG.consoleUrl + '?tab=' + encodeURIComponent(tab) + '&embed=1"></iframe>' +
+        '</div>';
+      document.body.appendChild(ov);
+      consoleOv = ov;
+      ov.querySelector('.ec-console-x').addEventListener('click', closeConsole);
+      ov.addEventListener('click', function (e) { if (e.target === ov) closeConsole(); });
+      consoleEsc = function (e) { if (e.key === 'Escape') closeConsole(); };
+      document.addEventListener('keydown', consoleEsc);
+    }
+    shell.querySelectorAll('.ec-console[data-console-tab]').forEach(function (b) {
+      b.addEventListener('click', function () { openConsole(b.getAttribute('data-console-tab')); });
+    });
+  }
 
-/* build 20260706-202721 */
+/* build 20260706-212913 */
