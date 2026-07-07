@@ -1516,6 +1516,15 @@
     if (refining) closeRefine(); else openRefine();
   });
 
+  /* Age (in days) of a snapshot from its YYYYMMDD-HHMMSS stamp, or null. Used to warn
+     before a big jump back — a blind Undo once rolled the page back three weeks. */
+  function stampAgeDays(stamp) {
+    var m = /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})/.exec(stamp || '');
+    if (!m) return null;
+    var d = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
+    return (Date.now() - d.getTime()) / 86400000;
+  }
+
   /* ---------- History & restore points ---------- */
   shell.querySelector('#ecHistory').addEventListener('click', async () => {
     if (previewing) { alert('Discard the current preview first.'); return; }
@@ -1548,34 +1557,53 @@
     ov.querySelector('#ecHistClose').addEventListener('click', close);
     ov.addEventListener('click', (e) => { if (e.target === ov) close(); });
     ov.querySelectorAll('.ec-hist-restore').forEach((b) => b.addEventListener('click', async () => {
-      if (!confirm('Roll the page back to this point? (You can undo this too.)')) return;
+      const age = stampAgeDays(b.dataset.stamp);
+      const warn = (age != null && age > 1) ? ('\n\n⚠ That version is about ' + Math.round(age) + ' day(s) old — newer work will be rolled back.') : '';
+      if (!confirm('Roll the page back to this point? (You can undo this too.)' + warn)) return;
       b.disabled = true; b.textContent = 'Restoring…';
       try {
         const r = await fetch(API + 'restore-to', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ password: key, stamp: b.dataset.stamp }),
         });
-        if (!r.ok) throw new Error(await r.text() || r.status);
+        if (!r.ok) throw new Error(await r.text() || r.status);   /* server may block: "Restore blocked: predates required parts…" */
         saveScroll();
         location.reload();
-      } catch (err) { alert('Restore failed (' + err.message + ')'); b.disabled = false; b.textContent = 'Restore'; }
+      } catch (err) { alert('Restore failed — ' + err.message); b.disabled = false; b.textContent = 'Restore'; }
     }));
   });
 
   /* ---------- Undo ---------- */
   shell.querySelector('#ecUndo').addEventListener('click', async () => {
     if (previewing) { alert('Discard the current preview first.'); return; }
-    if (!confirm('Undo the last change and restore the previous version of the page?')) return;
     const btn = shell.querySelector('#ecUndo');
+    /* Tell the owner WHAT Undo will restore (date), and warn loudly on a big jump. */
+    let target = null;
+    try {
+      const hr = await fetch(API + 'history', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: key }) });
+      if (hr.ok) {
+        const cur = ((await hr.json()).points || []).filter((p) => p.where !== 'undone');
+        cur.sort((a, b) => (a.stamp < b.stamp ? 1 : -1));   /* newest first */
+        target = cur[0] || null;
+      }
+    } catch (e) { /* fall through to a generic confirm */ }
+    let msg = 'Undo the last change and restore the previous version?';
+    if (target) {
+      const age = stampAgeDays(target.stamp);
+      msg = (age != null && age > 1)
+        ? ('⚠ This Undo rolls the page back to ' + target.when + ' — about ' + Math.round(age) + ' day(s) ago, which may discard newer work. Undo anyway?')
+        : ('Undo → restore the version from ' + target.when + '?');
+    }
+    if (!confirm(msg)) return;
     btn.disabled = true; btn.textContent = 'Reverting…';
     try {
       const r = await fetch(API + 'revert', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password: key }),
       });
-      if (r.status === 400) { alert('Nothing to undo yet.'); btn.disabled = false; btn.textContent = '↩ Undo'; return; }
+      if (r.status === 400) { alert((await r.text()) || 'Nothing to undo yet.'); btn.disabled = false; btn.textContent = '↩ Undo'; return; }   /* may be "Undo blocked: predates required parts…" */
       if (!r.ok) throw new Error(await r.text() || r.status);
-      alert('Reverted to the previous version.');
+      alert('Reverted' + (target ? ' to the version from ' + target.when : '') + '.');
       saveScroll();
       location.reload();
     } catch (err) {
@@ -1775,4 +1803,4 @@
   } catch { /* private mode */ }
 })();
 
-/* build 20260706-201258 */
+/* build 20260706-202721 */
