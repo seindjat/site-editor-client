@@ -169,19 +169,176 @@
     showOpening();
     getBuild().then(loadEditor);
   }
-  /* Prompt for the owner password and authenticate. Shared by first sign-in and the
-     stale-key recovery path below. Assumes arming is already true. */
-  function promptAndAuth() {
-    var pw = window.prompt('Owner password:');
-    if (!pw) { arming = false; return; }
-    fetch(API + 'auth', {
+  /* ---- Owner sign-in ------------------------------------------------------
+     An IN-PAGE dialog, never window.prompt(). prompt() is blocked outright in a
+     cross-origin iframe, stays suppressed for the rest of a page-load once the
+     browser's "prevent this page from creating more dialogs" box is ticked, and
+     is missing from a number of in-app webviews (tapping your own site from a
+     social post). Worse, a blocked prompt() THROWS — which left `arming` stuck
+     true and made the ✎ and ?edit silently dead until a reload: the 2026-07-05
+     "?edit did nothing" symptom, reachable from a second cause. A real dialog
+     also gives a MASKED field that a password manager can fill and save, and
+     puts failures inline instead of in an alert() the same switch suppresses.
+     Every style is inline so no site CSS can hide or break it. */
+  var signInEl = null;                            /* the open dialog, if any */
+  var signInKeyHandler = null;
+
+  function node(tag, style, attrs) {
+    var n = document.createElement(tag);
+    if (style) n.setAttribute('style', style);
+    if (attrs) for (var k in attrs) { if (attrs.hasOwnProperty(k)) n.setAttribute(k, attrs[k]); }
+    return n;
+  }
+
+  /* Non-blocking status pill — alert() replacement (alert is suppressed by the
+     same "no more dialogs" switch, and blocks the page besides). */
+  function toast(msg, ms) {
+    try {
+      var host = document.body || document.documentElement;
+      var t = node('div', 'position:fixed;left:50%;top:18px;transform:translateX(-50%);z-index:2147483647;' +
+        'max-width:min(90vw,420px);background:#111;color:#fff;font:600 14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;' +
+        'padding:11px 18px;border-radius:14px;box-shadow:0 6px 24px rgba(0,0,0,.35);text-align:center;');
+      t.textContent = msg;
+      host.appendChild(t);
+      setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, ms || 5000);
+    } catch (e) { /* nothing we can do — never throw out of a failure path */ }
+  }
+
+  function closeSignIn() {
+    try {
+      if (signInKeyHandler) document.removeEventListener('keydown', signInKeyHandler, true);
+      if (signInEl && signInEl.parentNode) signInEl.parentNode.removeChild(signInEl);
+    } catch (e) { /* ignore */ }
+    signInEl = null; signInKeyHandler = null;
+  }
+
+  /* POST the password. onFail gets a human message; success closes + opens. */
+  function authWith(pw, onFail) {
+    return fetch(API + 'auth', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ password: pw }),
     }).then(function (res) {
-      if (res.ok) { setEditKey(pw); startEditor(); return; }
+      if (res.ok) { setEditKey(pw); closeSignIn(); startEditor(); return; }
+      onFail(res.status === 401
+        ? 'That password is not right — try again.'
+        : 'Sign-in failed (' + res.status + '). Try again in a moment.');
+    }).catch(function () {
+      onFail('Edit service is not reachable. Check your connection and try again.');
+    });
+  }
+
+  /* Build + show the dialog. Returns false if the DOM would not cooperate, so
+     the caller can fall back. `note` is an optional line above the field. */
+  function showSignIn(note) {
+    if (signInEl) {                                /* already open — just refocus */
+      try { signInEl.querySelector('input[type=password]').focus(); } catch (e) { /* ignore */ }
+      return true;
+    }
+    try {
+      var host = document.body || document.documentElement;
+      if (!host) return false;
+
+      var back = node('div', 'position:fixed;inset:0;z-index:2147483647;background:rgba(17,17,17,.55);' +
+        'display:flex;align-items:center;justify-content:center;padding:20px;' +
+        'font:400 15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;-webkit-font-smoothing:antialiased;');
+
+      var form = node('form', 'background:#fff;color:#111;width:100%;max-width:340px;box-sizing:border-box;' +
+        'border-radius:16px;padding:22px;box-shadow:0 18px 60px rgba(0,0,0,.4);text-align:left;',
+        { autocomplete: 'on', novalidate: 'novalidate' });
+
+      var h = node('div', 'font:700 17px/1.3 inherit;margin:0 0 4px;');
+      h.textContent = 'Owner sign-in';
+      var sub = node('div', 'font-size:13px;color:#666;margin:0 0 14px;');
+      sub.textContent = 'Enter your password to edit this page.';
+
+      form.appendChild(h); form.appendChild(sub);
+
+      if (note) {
+        var n = node('div', 'font-size:13px;line-height:1.45;color:#8a5300;background:#fff6e5;' +
+          'border:1px solid #f2d9a8;border-radius:10px;padding:9px 11px;margin:0 0 12px;');
+        n.textContent = note;
+        form.appendChild(n);
+      }
+
+      /* A username field (off-screen, not display:none — managers ignore hidden
+         ones) so password managers will offer to fill AND save this login. */
+      var user = node('input', 'position:absolute;left:-9999px;width:1px;height:1px;opacity:0;',
+        { type: 'text', name: 'username', value: location.hostname, autocomplete: 'username',
+          tabindex: '-1', 'aria-hidden': 'true' });
+      form.appendChild(user);
+
+      var pw = node('input', 'width:100%;box-sizing:border-box;font:inherit;padding:11px 12px;' +
+        'border:1.5px solid #d4d4d4;border-radius:10px;outline:none;background:#fff;color:#111;',
+        { type: 'password', name: 'password', autocomplete: 'current-password',
+          placeholder: 'Password', 'aria-label': 'Owner password' });
+      form.appendChild(pw);
+
+      var err = node('div', 'font-size:13px;line-height:1.45;color:#b3261e;margin:10px 0 0;display:none;');
+      err.setAttribute('role', 'alert');
+      form.appendChild(err);
+
+      var row = node('div', 'display:flex;gap:8px;margin:16px 0 0;');
+      var cancel = node('button', 'flex:0 0 auto;font:600 14px/1 inherit;padding:11px 14px;border-radius:10px;' +
+        'border:1.5px solid #d4d4d4;background:#fff;color:#444;cursor:pointer;', { type: 'button' });
+      cancel.textContent = 'Cancel';
+      var go = node('button', 'flex:1 1 auto;font:600 14px/1 inherit;padding:11px 14px;border-radius:10px;' +
+        'border:1.5px solid #111;background:#111;color:#fff;cursor:pointer;', { type: 'submit' });
+      go.textContent = 'Sign in';
+      row.appendChild(cancel); row.appendChild(go);
+      form.appendChild(row);
+
+      back.appendChild(form);
+      host.appendChild(back);
+      signInEl = back;
+
+      function fail(msg) {
+        err.textContent = msg; err.style.display = 'block';
+        go.disabled = false; go.textContent = 'Sign in'; go.style.opacity = '1';
+        try { pw.focus(); pw.select(); } catch (e) { /* ignore */ }
+      }
+      function cancelOut() { closeSignIn(); arming = false; }
+
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        var v = pw.value;
+        if (!v) { fail('Enter your password.'); return; }
+        err.style.display = 'none';
+        go.disabled = true; go.textContent = 'Signing in…'; go.style.opacity = '.7';
+        authWith(v, fail);
+      });
+      cancel.addEventListener('click', cancelOut);
+      /* Backdrop click closes; clicks inside the card must not. */
+      back.addEventListener('mousedown', function (e) { if (e.target === back) cancelOut(); });
+
+      signInKeyHandler = function (e) {
+        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); cancelOut(); }
+      };
+      document.addEventListener('keydown', signInKeyHandler, true);
+
+      /* Let the browser paint before focusing — iOS Safari ignores an immediate
+         focus() and then never raises the keyboard. */
+      setTimeout(function () { try { pw.focus(); } catch (e) { /* ignore */ } }, 30);
+      return true;
+    } catch (e) {
+      closeSignIn();
+      return false;
+    }
+  }
+
+  /* Ask for the password and authenticate. Shared by first sign-in and the
+     stale-key recovery path below. Assumes arming is already true. */
+  function promptAndAuth(note) {
+    if (showSignIn(note || '')) return;
+    /* Dialog could not be built at all (no document yet, DOM blocked). Fall back
+       to prompt() — guarded, because a blocked prompt() throws. */
+    try {
+      var pw = window.prompt(note ? note + '\n\nOwner password:' : 'Owner password:');
+      if (!pw) { arming = false; return; }
+      authWith(pw, function (msg) { arming = false; toast(msg); });
+    } catch (e) {
       arming = false;
-      alert(res.status === 401 ? 'Wrong password.' : 'Sign-in failed (' + res.status + '). Try again shortly.');
-    }).catch(function () { arming = false; alert('Edit service is not reachable.'); });
+      toast('Could not open the sign-in box here. Open the site in a normal browser tab and try again.', 8000);
+    }
   }
   function enterEditMode() {
     if (arming || document.querySelector('.ec-shell')) return;   /* already opening / open */
@@ -200,12 +357,13 @@
       if (res.ok) { startEditor(); return; }               /* remembered key still valid */
       if (res.status === 401) {                             /* password changed → key is stale */
         clearEditKey();
-        alert('Your saved sign-in is no longer valid (the password may have changed). Please sign in again.');
-        promptAndAuth();                                    /* arming stays true through the re-prompt */
-        return;
+        /* The reason goes INSIDE the dialog we are about to open — one surface,
+           and nothing to dismiss before typing. */
+        promptAndAuth('Your saved sign-in is no longer valid (the password may have changed). Please sign in again.');
+        return;                                             /* arming stays true through the re-prompt */
       }
       arming = false;                                       /* 429 / other — keep the key, let them retry */
-      alert('Edit service busy (' + res.status + '). Try again in a moment.');
+      toast('Edit service busy (' + res.status + '). Try again in a moment.');
     }).catch(function () {
       startEditor();                                        /* transient network blip → open optimistically */
     });
@@ -258,4 +416,4 @@
   }
 })();
 
-/* build 20260706-213815 */
+/* build 20260920-001357 */
