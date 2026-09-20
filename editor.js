@@ -1915,7 +1915,6 @@
       tip.querySelector('#ecWelcomeOk').addEventListener('click', () => { tip.remove(); try { localStorage.setItem(CFG.storePrefix + 'Welcomed', '1'); } catch { /* ignore */ } });
     }
   } catch { /* private mode */ }
-})();
   /* ---------- Owner console panel (Chat + Stats), embedded in-editor ---------- */
   /* The chat/stats console is a separate but SAME-ORIGIN app (chat_server.py /console). Rather
      than open it in a new tab, embed it as an iframe panel so the owner never leaves the editor.
@@ -1955,4 +1954,11 @@
     });
   }
 
-/* build 20260920-092808 */
+  /* End of the editor IIFE. This close lived at the end of 97-seo.js, which left
+     THIS file outside the closure: 98-console.js references CFG, so every load
+     threw "ReferenceError: CFG is not defined" and the 📊 Stats / 💬 Chat panel
+     silently never wired up — from the day the console unification shipped.
+     Keep this close in the LAST numbered file. */
+})();
+
+/* build 20260920-095712 */
