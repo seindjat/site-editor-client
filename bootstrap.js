@@ -299,7 +299,11 @@
       onFail(res.status === 401
         ? 'That password is not right — try again.'
         : 'Sign-in failed (' + res.status + '). Try again in a moment.');
-    }).catch(function () {
+    /* Two-arg then, NOT a trailing .catch: a trailing catch also swallows
+       anything thrown by the success branch above and would then tell an owner
+       who just signed in successfully that the service is unreachable. This
+       handler covers the network call and nothing else. */
+    }, function () {
       onFail('Edit service is not reachable. Check your connection and try again.');
     });
   }
@@ -502,4 +506,4 @@
   }
 })();
 
-/* build 20260920-092410 */
+/* build 20260920-092808 */
