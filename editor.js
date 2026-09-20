@@ -58,15 +58,30 @@
   const EDIT_ACTIVE = CFG.storePrefix + 'EditActive';
   const AI_MODEL_KEY = CFG.storePrefix + 'AiModel';
   /* curated models for the picker; the owner can also paste ANY OpenRouter id.
-     Bare id (claude-opus-4-8) = Anthropic direct; "vendor/model" = via OpenRouter. */
+     Bare id (claude-opus-5) = Anthropic direct; "vendor/model" = via OpenRouter. */
+  /* NOTE: whatever is chosen here is SENT with every AI request and the server
+     uses it in preference to its own EDIT_AI_MODEL. So this list — not the
+     server config — is what actually decides which model runs. Bumping the
+     server default alone does nothing; keep the two in step. */
+  const AI_MODEL_DEFAULT = 'claude-opus-5';
   const AI_MODELS = (window.EDITOR_CONFIG && window.EDITOR_CONFIG.aiModels) || [
-    { id: 'claude-opus-4-8', label: 'Claude Opus 4.8 — most reliable (default)' },
-    { id: 'anthropic/claude-3.5-haiku', label: 'Claude 3.5 Haiku — cheaper (OpenRouter)' },
+    { id: AI_MODEL_DEFAULT, label: 'Claude Opus 5 — most capable (default)' },
+    { id: 'claude-sonnet-5', label: 'Claude Sonnet 5 — cheaper, still strong' },
+    { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5 — cheapest' },
     { id: 'openai/gpt-4o-mini', label: 'GPT-4o mini — cheap (OpenRouter)' },
-    { id: 'google/gemini-flash-1.5', label: 'Gemini 1.5 Flash — very cheap (OpenRouter)' },
     { id: 'deepseek/deepseek-chat', label: 'DeepSeek Chat — very cheap (OpenRouter)' },
   ];
-  function getAiModel() { try { return localStorage.getItem(AI_MODEL_KEY) || 'claude-opus-4-8'; } catch { return 'claude-opus-4-8'; } }
+  function getAiModel() {
+    try {
+      var stored = localStorage.getItem(AI_MODEL_KEY);
+      /* A model the owner picked BEFORE this list was refreshed would pin them to
+         a previous generation forever. Retire the ids we no longer offer. */
+      var RETIRED = ['claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6',
+                     'claude-sonnet-4-6', 'anthropic/claude-3.5-haiku', 'google/gemini-flash-1.5'];
+      if (stored && RETIRED.indexOf(stored) !== -1) { localStorage.removeItem(AI_MODEL_KEY); stored = null; }
+      return stored || AI_MODEL_DEFAULT;
+    } catch { return AI_MODEL_DEFAULT; }
+  }
   function aiModelLabel(id) { const m = AI_MODELS.find((x) => x.id === id); return m ? m.label.split(' — ')[0] : id; }
 
   const key = getEditKey();
@@ -1961,4 +1976,4 @@
      Keep this close in the LAST numbered file. */
 })();
 
-/* build 20260920-105934 */
+/* build 20260920-115410 */
