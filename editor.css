@@ -259,7 +259,14 @@ html.ec-frame section[hidden] { display: block !important; opacity: 0.4; outline
 .ec-dev { background: none; border: 0; color: #bbb; font: 600 12px var(--font-body, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif); padding: 7px 12px; border-radius: 7px; cursor: pointer; }
 .ec-dev.is-active { background: var(--orange, #f7941d); color: #fff; }
 /* page switcher (Home / Privacy) */
-.ec-pages { display: flex; gap: 4px; background: #2a2a2e; padding: 3px; border-radius: 10px; }
+/* The page switcher is a flex row, and with enough pages it simply ran off the
+   right edge of the screen — no wrap, no scroll, no way to reach the last tabs.
+   metisconst has 22 and its final pages were unreachable. Wrap instead, and cap
+   the height so a very large site scrolls rather than eating the viewport.
+   min-width:0 lets it shrink inside the toolbar row instead of shoving the
+   device picker and Save/Exit off with it. */
+.ec-pages { display: flex; flex-wrap: wrap; gap: 4px; background: #2a2a2e; padding: 3px;
+  border-radius: 10px; min-width: 0; max-height: 30vh; overflow-y: auto; }
 .ec-page { background: none; border: 0; color: #bbb; font: 700 12px var(--font-body, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif); padding: 7px 13px; border-radius: 7px; cursor: pointer; }
 .ec-page.is-active { background: #3b3b42; color: #fff; }
 /* link-edit toggle (shares the comment-toggle base) */
@@ -330,4 +337,4 @@ html.ec-frame section[hidden] { display: block !important; opacity: 0.4; outline
 .ec-hist-restore { background: var(--orange-soft, #fff3e0); color: var(--orange-dark, #d97b06); border: 1px solid var(--orange, #f7941d); border-radius: 7px; padding: 6px 14px; font: 700 0.82rem var(--font-body, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif); cursor: pointer; }
 .ec-hist-restore:hover { background: var(--orange, #f7941d); color: #fff; }
 
-/* build 20260920-115410 */
+/* build 20260920-142007 */
