@@ -176,10 +176,17 @@
     '<div class="ec-toolbar">' +
       /* ── Row 1: page + device pickers (left), primary actions (right corner) ── */
       '<div class="ec-toolbar-row ec-row-main">' +
-        '<div class="ec-pages">' +
-          PAGES.map((p) =>
-            `<button type="button" data-page="${p.file}" class="ec-page${p.file === 'index.html' ? ' is-active' : ''}">${p.label}</button>`).join('') +
-        '</div>' +
+        /* A dropdown, not a row of tabs: 22 pages as buttons ran off the screen and
+           took the device picker and Save/Exit with them. One line, any page count.
+           Hidden entirely for a single-page site, where a switcher is just noise. */
+        (PAGES.length > 1
+          ? '<label class="ec-pages"><span class="ec-pages-lbl">Page</span>' +
+              '<select class="ec-page-sel" aria-label="Page to edit">' +
+                PAGES.map((p) =>
+                  '<option value="' + escapeHtml(p.file) + '">' + escapeHtml(p.label) + '</option>').join('') +
+              '</select>' +
+            '</label>'
+          : '') +
         '<div class="ec-devices">' +
           Object.entries(DEVICES).map(([k, d]) =>
             `<button type="button" data-dev="${k}" class="ec-dev${k === 'desktop' ? ' is-active' : ''}">${d.label}</button>`).join('') +
@@ -411,20 +418,29 @@
     if (styleMode) setStyleMode(false);
     currentPage = file;
     try { sessionStorage.setItem('ecPage', file); } catch { /* ignore */ }
-    shell.querySelectorAll('.ec-page').forEach((b) => b.classList.toggle('is-active', b.dataset.page === file));
+    syncPageSel();
     applyPageScope();
     frameDoc = null;
     frame.removeAttribute('srcdoc');
     frame.src = frameSrc(currentPage);
     updateStatus();
   }
-  shell.querySelectorAll('.ec-page').forEach((b) => b.addEventListener('click', () => switchPage(b.dataset.page)));
+  const pageSel = shell.querySelector('.ec-page-sel');
+  function syncPageSel() { if (pageSel) pageSel.value = currentPage; }
+  if (pageSel) {
+    pageSel.addEventListener('change', async () => {
+      await switchPage(pageSel.value);
+      /* switchPage bails (without changing currentPage) when the owner declines to
+         discard unsaved work — the menu has already moved, so put it back. */
+      syncPageSel();
+    });
+  }
   /* resume on the page the owner was last editing (survives the post-save reload) */
   const resumePage = sessionStorage.getItem('ecPage');
   if (resumePage && PAGES.some((p) => p.file === resumePage) && resumePage !== currentPage) {
     currentPage = resumePage;
-    shell.querySelectorAll('.ec-page').forEach((b) => b.classList.toggle('is-active', b.dataset.page === currentPage));
   }
+  syncPageSel();
   applyPageScope();
   frame.src = frameSrc(currentPage);   /* initial load (cache-busted) */
 
@@ -1976,4 +1992,4 @@
      Keep this close in the LAST numbered file. */
 })();
 
-/* build 20260920-142007 */
+/* build 20260920-143220 */

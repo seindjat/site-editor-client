@@ -259,16 +259,22 @@ html.ec-frame section[hidden] { display: block !important; opacity: 0.4; outline
 .ec-dev { background: none; border: 0; color: #bbb; font: 600 12px var(--font-body, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif); padding: 7px 12px; border-radius: 7px; cursor: pointer; }
 .ec-dev.is-active { background: var(--orange, #f7941d); color: #fff; }
 /* page switcher (Home / Privacy) */
-/* The page switcher is a flex row, and with enough pages it simply ran off the
-   right edge of the screen — no wrap, no scroll, no way to reach the last tabs.
-   metisconst has 22 and its final pages were unreachable. Wrap instead, and cap
-   the height so a very large site scrolls rather than eating the viewport.
-   min-width:0 lets it shrink inside the toolbar row instead of shoving the
-   device picker and Save/Exit off with it. */
-.ec-pages { display: flex; flex-wrap: wrap; gap: 4px; background: #2a2a2e; padding: 3px;
-  border-radius: 10px; min-width: 0; max-height: 30vh; overflow-y: auto; }
-.ec-page { background: none; border: 0; color: #bbb; font: 700 12px var(--font-body, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif); padding: 7px 13px; border-radius: 7px; cursor: pointer; }
-.ec-page.is-active { background: #3b3b42; color: #fff; }
+/* Page switcher — a dropdown. It used to be a row of tabs, which on a 22-page
+   site ran off the right edge of the screen with no wrap and no scroll: the last
+   pages were simply unreachable, and the growing row pushed the device picker and
+   Save/Exit off with it. A select is one line at any page count. */
+.ec-pages { display: flex; align-items: center; gap: 7px; background: #2a2a2e;
+  padding: 3px 8px 3px 11px; border-radius: 10px; min-width: 0; }
+.ec-pages-lbl { font: 700 10px var(--font-body, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif);
+  color: #8a8a8a; text-transform: uppercase; letter-spacing: 0.05em; flex: 0 0 auto; }
+.ec-page-sel { background: #1c1c20; color: #fff; border: 1px solid #45454c; border-radius: 7px;
+  padding: 6px 26px 6px 9px; font: 700 12px var(--font-body, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif);
+  cursor: pointer; max-width: 230px; text-overflow: ellipsis; outline: none;
+  appearance: none; -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath fill='%23bbb' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 9px center; background-size: 10px; }
+.ec-page-sel:focus-visible { border-color: var(--orange, #f7941d); }
+.ec-page-sel option { background: #1c1c20; color: #fff; }
 /* link-edit toggle (shares the comment-toggle base) */
 .ec-link-toggle.is-active { background: #0d9488; border-color: #0d9488; }
 .ec-img-toggle.is-active { background: #7c3aed; border-color: #7c3aed; }
@@ -337,4 +343,4 @@ html.ec-frame section[hidden] { display: block !important; opacity: 0.4; outline
 .ec-hist-restore { background: var(--orange-soft, #fff3e0); color: var(--orange-dark, #d97b06); border: 1px solid var(--orange, #f7941d); border-radius: 7px; padding: 6px 14px; font: 700 0.82rem var(--font-body, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif); cursor: pointer; }
 .ec-hist-restore:hover { background: var(--orange, #f7941d); color: #fff; }
 
-/* build 20260920-142007 */
+/* build 20260920-143220 */
