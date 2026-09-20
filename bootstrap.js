@@ -173,10 +173,17 @@
     injectCss(document, build);
     ['editor.js', 'editor-addons.js'].forEach(function (name) {
       var s = document.createElement('script');
+      /* CORS, so window.onerror can actually SEE errors thrown in here. Without
+         it the browser reports cross-origin script failures as a bare
+         "Script error." with no file, line or stack — which is exactly what our
+         telemetry recorded on its first real outing, and it is useless. jsDelivr
+         serves Access-Control-Allow-Origin: *, so this costs nothing. */
+      s.crossOrigin = 'anonymous';
       s.src = urlFor(name, build);
       s.onerror = function () {
         if (!immBase(build)) return;             // already mutable — nothing to fall back to
         var s2 = document.createElement('script');
+        s2.crossOrigin = 'anonymous';
         s2.src = mutUrl(name, build);
         document.body.appendChild(s2);
       };
@@ -506,4 +513,4 @@
   }
 })();
 
-/* build 20260920-095712 */
+/* build 20260920-100656 */
