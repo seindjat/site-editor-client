@@ -4,12 +4,19 @@
    flag, and lazy-loads the heavy editor (editor.js + editor.css + editor-addons.js)
    ONLY for the authenticated owner. Visitors download just this file.
 
-   AUTO-UPDATE: when editorBase points at the shared jsDelivr URL, the loader fetches
-   a tiny build id (build.txt, cache-bypassed) and loads the editor files at
-   ?b=<build>. Publishing a new editor bumps that build id, so every site picks up
-   the new version on the next edit — no per-site change. If build.txt can't be
-   fetched (or editorBase is a local path), it falls back to the per-site editorV,
-   so local / not-yet-migrated sites keep working unchanged.
+   WHICH EDITOR BUILD LOADS — three sources, in order:
+     1. PINNED: EDITOR_CONFIG.editorBuild names an exact build. Deterministic —
+        the named build loads the moment this site's config is fetched. Preferred
+        for the live fleet; deploy/hardening/bump-loader.py writes it.
+     2. AUTO-UPDATE: otherwise, fetch build.txt (cache-bypassed) from editorBase
+        and use whatever it names, so publishing reaches every site with no
+        per-site change. Convenient, but build.txt is MUTABLE and jsDelivr's
+        edges are eventually consistent (observed serving three values in
+        minutes, and moving backwards), so arrival time is unpredictable.
+     3. FALLBACK: per-site editorV, when build.txt can't be fetched or editorBase
+        is a local path — local / not-yet-migrated sites keep working unchanged.
+   The editor files themselves load from an IMMUTABLE @<build>/ URL in cases 1-2,
+   so whichever build is chosen, its files are internally consistent.
 
    Keyboard: Cmd/Ctrl+E enters edit mode (keeps scroll); Cmd/Ctrl+S = Save;
    Cmd/Ctrl+Z = Undo (when not typing).
@@ -129,9 +136,22 @@
      immediately; otherwise (local path, or fetch failure) fall back to editorV. */
   var _buildP = null;
   var _lastBuild = '';                  /* resolved build id, for error reports */
+  /* An explicit, per-site PIN: EDITOR_CONFIG.editorBuild names the exact editor
+     build this site runs. Validated against the same charset as build.txt so a
+     malformed value can never be pasted into a URL. */
+  var PIN = /^[\w.\-]{1,40}$/.test(u.editorBuild || '') ? u.editorBuild : '';
   function getBuild() {
     if (_buildP) return _buildP;
     var fallback = 'v' + V;
+    /* PINNED — skip build.txt entirely.
+       build.txt is a MUTABLE jsDelivr file, and jsDelivr's edges are only
+       eventually consistent: we have watched it serve three different values
+       within minutes, and go BACKWARDS. That made every deploy land at an
+       unpredictable time, and could pair a freshly-fetched bootstrap with a
+       stale editor.js. A pin makes it deterministic — the build named in this
+       site's config is the build that loads, the moment the config is fetched.
+       Resolution order: pin → build.txt (auto-update) → editorV fallback. */
+    if (PIN) { _lastBuild = PIN; _buildP = Promise.resolve(PIN); return _buildP; }
     if (!BASE) { _lastBuild = fallback; _buildP = Promise.resolve(fallback); return _buildP; }
     try {
       _buildP = fetch(BASE + 'build.txt', { cache: 'no-store' })
@@ -513,4 +533,4 @@
   }
 })();
 
-/* build 20260920-100656 */
+/* build 20260920-105934 */
