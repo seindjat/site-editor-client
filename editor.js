@@ -299,12 +299,95 @@
   shell.querySelectorAll('.ec-dev').forEach((b) => b.addEventListener('click', () => applyDevice(b.dataset.dev)));
   window.addEventListener('resize', () => applyDevice(currentDevice));
 
+
+  /* ---- in-page dialogs (replacing alert / confirm) -------------------------
+     alert() and confirm() stop working for the rest of a page-load the moment a
+     browser's "prevent this page from creating more dialogs" box is ticked — and
+     an editor that fires several in a row is exactly what gets someone to tick
+     it. Suppressed, alert() shows nothing, so "Saved ✓" and every error message
+     vanish silently; confirm() returns false, so Undo simply does nothing with
+     no explanation. That is the same silent-failure class as the old prompt()
+     sign-in, sitting on Save and Undo. These use the editor's own modal styling
+     instead: unsuppressible, and they look like the rest of the editor. */
+  function ecToast(msg, ms) {
+    try {
+      const t = document.createElement('div');
+      t.className = 'ec-toast';
+      t.textContent = msg;
+      document.body.appendChild(t);
+      setTimeout(() => { if (t.parentNode) t.remove(); }, ms || 4200);
+    } catch (e) { /* a message must never throw */ }
+  }
+
+  /* Resolves true (confirmed) / false (cancelled or unbuildable — never hangs). */
+  function ecDialog(opts) {
+    return new Promise((resolve) => {
+      let done = false, ov = null;
+      const onKey = (e) => {
+        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(false); }
+        else if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); finish(true); }
+      };
+      function finish(v) {
+        if (done) return;
+        done = true;
+        document.removeEventListener('keydown', onKey, true);
+        try { if (ov) ov.remove(); } catch (e) { /* ignore */ }
+        resolve(v);
+      }
+      try {
+        ov = document.createElement('div');
+        ov.className = 'ec-modal-ov';
+        const m = document.createElement('div');
+        m.className = 'ec-modal';
+        const h = document.createElement('h3');
+        h.textContent = opts.title || 'Just checking';
+        const p = document.createElement('p');
+        p.className = 'ec-modal-sub ec-ask-msg';
+        p.textContent = opts.msg || '';
+        const row = document.createElement('div');
+        row.className = 'ec-modal-row';
+        row.appendChild(document.createElement('span'));
+        const box = document.createElement('div');
+        if (opts.cancel !== false) {
+          const c = document.createElement('button');
+          c.type = 'button'; c.className = 'ec-modal-cancel';
+          c.textContent = opts.cancelLabel || 'Cancel';
+          c.addEventListener('click', () => finish(false));
+          box.appendChild(c);
+        }
+        const ok = document.createElement('button');
+        ok.type = 'button';
+        ok.className = opts.danger ? 'ec-modal-del' : 'ec-modal-save';
+        ok.textContent = opts.okLabel || 'OK';
+        ok.addEventListener('click', () => finish(true));
+        box.appendChild(ok);
+        row.appendChild(box);
+        m.appendChild(h); m.appendChild(p); m.appendChild(row);
+        ov.appendChild(m);
+        document.body.appendChild(ov);
+        ov.addEventListener('mousedown', (e) => { if (e.target === ov) finish(false); });
+        document.addEventListener('keydown', onKey, true);
+        setTimeout(() => { try { ok.focus(); } catch (e) { /* ignore */ } }, 30);
+      } catch (e) {
+        /* Could not build the dialog — resolve rather than hang the caller, and
+           make sure we hear about it. */
+        if (window.__ecReport) window.__ecReport('ecDialog failed: ' + (e && e.message), 'editor.js', 0, e && e.stack);
+        ecToast(opts.msg || '');
+        finish(false);
+      }
+    });
+  }
+  const ecAlert = (msg, title) =>
+    ecDialog({ msg: msg, title: title || 'Heads up', cancel: false, okLabel: 'OK' });
+  const ecConfirm = (msg, title, okLabel, danger) =>
+    ecDialog({ msg: msg, title: title || 'Just checking', okLabel: okLabel || 'Yes', danger: danger });
   /* ---------- Page switcher (Home / Privacy) ---------- */
-  function switchPage(file) {
+  async function switchPage(file) {
     if (file === currentPage || previewing) return;
     if (refining && !closeRefine(true)) return;
     if ((dirty.size || linkEdits.size || comments.size || sectionsDirty || styleDirty) &&
-        !confirm('You have unsaved changes on this page. Discard them and switch pages?')) return;
+        !(await ecConfirm('Your unsaved changes on this page will be thrown away.',
+                          'Discard changes and switch pages?', 'Discard & switch', true))) return;
     dirty.clear(); linkEdits.clear(); comments.clear(); sectionsDirty = false;
     styleEdits.clear(); styleDirty = false;
     if (linkMode) setLinkMode(false);
@@ -557,7 +640,7 @@
     ov.addEventListener('click', (e) => { if (e.target === ov) close(); });
     ov.querySelector('#ecmSave').addEventListener('click', () => {
       const href = buildHref();
-      if (!href) { alert('Please enter a destination.'); return; }
+      if (!href) { ecToast('Please enter a destination.'); return; }
       a.setAttribute('href', href);
       let newText = null;
       if (textInput) {
@@ -1167,13 +1250,14 @@
   ecSave.addEventListener('click', async () => {
     if (previewing) return;
     const hasHtml = dirty.size || linkEdits.size || sectionsDirty || styleDirty;
-    if (!hasHtml && !comments.size) { alert('No changes or notes yet.'); return; }
+    if (!hasHtml && !comments.size) { ecToast('No changes or notes yet.'); return; }
     /* guard: don't let pending AI notes go unnoticed on Save */
-    if (comments.size && !confirm(
+    if (comments.size && !(await ecConfirm(
       'You have ' + comments.size + ' note' + (comments.size !== 1 ? 's' : '') + ' for the AI.\n\n' +
       'Saving will queue them — then use “🤖 Apply notes” to have the AI make those changes.\n\n' +
-      'Save now? (Cancel to apply your notes first.)'
-    )) return;
+      'Cancel if you would rather apply your notes first.',
+      'Save with notes queued?', 'Save now'
+    ))) return;
     ecSave.disabled = true; ecSave.textContent = 'Saving…';
     try {
       if (hasHtml) {
@@ -1236,16 +1320,17 @@
         });
         if (!r.ok) throw new Error('notes — ' + (await r.text() || r.status));
       }
-      alert('Saved ✓' +
+      await ecAlert(
         (dirty.size ? '\n• Text changes are live.' : '') +
         (linkEdits.size ? '\n• Link changes are live.' : '') +
         (styleEdits.size ? '\n• Style changes are live.' : '') +
         (sectionsDirty ? '\n• Section layout is live.' : '') +
-        (comments.size ? '\n• Your design notes were sent to the AI queue.' : ''));
+        (comments.size ? '\n• Your design notes were sent to the AI queue.' : ''),
+        'Saved ✓');
       saveScroll();
       location.reload();
     } catch (err) {
-      alert('Save failed (' + err.message + ')');
+      await ecAlert('Save failed (' + err.message + ')', 'Save failed');
       ecSave.disabled = false; ecSave.textContent = 'Save changes';
     }
   });
@@ -1277,13 +1362,14 @@
            don't open a (broken) preview */
         ecImpl.disabled = false; refreshImplState();
         const why = (data.cannot && data.cannot.length) ? data.cannot : ['This change can’t be done as a text or styling edit.'];
-        alert('🤖 I can’t make this change:\n\n• ' + why.join('\n\n• ') +
-          '\n\nThis kind of change needs a developer to add — nothing was changed on your page.');
+        await ecAlert('• ' + why.join('\n\n• ') +
+          '\n\nThis kind of change needs a developer to add — nothing was changed on your page.',
+          '🤖 I can’t make this change');
         return;
       }
       startPreview(data.files, data.summary, data.changes || [], data.cost, data.cannot);
     } catch (err) {
-      alert('AI request failed (' + err.message + ') — nothing was changed.');
+      await ecAlert('AI request failed (' + err.message + ') — nothing was changed.', 'AI request failed');
       ecImpl.textContent = orig; ecImpl.disabled = false; refreshImplState();
     }
   });
@@ -1349,7 +1435,7 @@
       saveScroll();
       location.reload();
     } catch (err) {
-      alert('Publish failed (' + err.message + ')');
+      await ecAlert('Publish failed (' + err.message + ')', 'Publish failed');
       ap.disabled = false; ap.textContent = '✓ Approve & publish';
     }
   }
@@ -1386,8 +1472,8 @@
     const input = p.querySelector('#ecRfInput');
     p.querySelector('#ecRfSend').addEventListener('click', sendRefine);
     input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendRefine(); } });
-    p.querySelector('#ecRfClose').addEventListener('click', () => closeRefine());
-    p.querySelector('#ecRfDiscard').addEventListener('click', () => closeRefine());
+    p.querySelector('#ecRfClose').addEventListener('click', () => closeRefineAsk());
+    p.querySelector('#ecRfDiscard').addEventListener('click', () => closeRefineAsk());
     p.querySelector('#ecRfPublish').addEventListener('click', publishRefine);
     return p;
   }
@@ -1438,8 +1524,22 @@
     setFrameSrcdoc(await buildPreviewSrcdoc({}), y);
     setTimeout(() => refinePanel.querySelector('#ecRfInput').focus(), 60);
   }
-  function closeRefine(skipReload) {
-    if (refineDirty && !confirm('Discard the unsaved AI changes?')) return false;
+  /* Tear the refine session down. Callers fall into two kinds, and they must
+     behave differently:
+       - IMPLICIT context switches (switching page, entering link/image/section/
+         style mode, running Apply notes) reach this synchronously. Silently
+         throwing away the owner's unsaved AI work on one of those is how you
+         lose their trust — and asking them with a confirm() is exactly the
+         dialog a browser may have suppressed. So we REFUSE and say why: no data
+         loss, no dialog, nothing silent.
+       - EXPLICIT closes (the ✕ / Discard buttons, the Refine toggle) go through
+         closeRefineAsk(), which asks properly in an in-page dialog.
+     `force` is what closeRefineAsk() passes once the owner has actually agreed. */
+  function closeRefine(skipReload, force) {
+    if (refineDirty && !force) {
+      ecToast('You have unsaved AI changes — press 💾 Save changes to keep them, or ✕ on the Refine panel to discard them.', 6500);
+      return false;
+    }
     refining = false;
     ecSave.style.display = '';   /* bring the toolbar Save back */
     ecRefine.classList.remove('is-active'); ecRefine.textContent = '🪄 Refine with AI';
@@ -1507,15 +1607,23 @@
       saveScroll();
       location.reload();
     } catch (err) {
-      alert('Save failed (' + err.message + ')');
+      await ecAlert('Save failed (' + err.message + ')', 'Save failed');
       btn.disabled = false; btn.textContent = '💾 Save changes';
     }
   }
   ecRefine.addEventListener('click', () => {
     if (previewing) return;
-    if (refining) closeRefine(); else openRefine();
+    if (refining) closeRefineAsk(); else openRefine();
   });
 
+
+  /* The explicit "I want to close this" path: ask, then force the teardown. */
+  async function closeRefineAsk(skipReload) {
+    if (refineDirty && !(await ecConfirm(
+      'Your unsaved AI changes will be thrown away. This cannot be undone.',
+      'Discard the AI changes?', 'Discard', true))) return false;
+    return closeRefine(skipReload, true);
+  }
   /* Age (in days) of a snapshot from its YYYYMMDD-HHMMSS stamp, or null. Used to warn
      before a big jump back — a blind Undo once rolled the page back three weeks. */
   function stampAgeDays(stamp) {
@@ -1527,7 +1635,7 @@
 
   /* ---------- History & restore points ---------- */
   shell.querySelector('#ecHistory').addEventListener('click', async () => {
-    if (previewing) { alert('Discard the current preview first.'); return; }
+    if (previewing) { ecToast('Discard the current preview first.'); return; }
     let data;
     try {
       const r = await fetch(API + 'history', {
@@ -1536,7 +1644,7 @@
       });
       if (!r.ok) throw new Error(await r.text() || r.status);
       data = await r.json();
-    } catch (err) { alert('Could not load history (' + err.message + ')'); return; }
+    } catch (err) { await ecAlert('Could not load history (' + err.message + ')', 'History unavailable'); return; }
 
     const ov = document.createElement('div');
     ov.className = 'ec-modal-ov';
@@ -1559,7 +1667,8 @@
     ov.querySelectorAll('.ec-hist-restore').forEach((b) => b.addEventListener('click', async () => {
       const age = stampAgeDays(b.dataset.stamp);
       const warn = (age != null && age > 1) ? ('\n\n⚠ That version is about ' + Math.round(age) + ' day(s) old — newer work will be rolled back.') : '';
-      if (!confirm('Roll the page back to this point? (You can undo this too.)' + warn)) return;
+      if (!(await ecConfirm('The page goes back to this point. You can undo this too.' + warn,
+                            'Roll the page back?', 'Roll back', age != null && age > 1))) return;
       b.disabled = true; b.textContent = 'Restoring…';
       try {
         const r = await fetch(API + 'restore-to', {
@@ -1569,13 +1678,13 @@
         if (!r.ok) throw new Error(await r.text() || r.status);   /* server may block: "Restore blocked: predates required parts…" */
         saveScroll();
         location.reload();
-      } catch (err) { alert('Restore failed — ' + err.message); b.disabled = false; b.textContent = 'Restore'; }
+      } catch (err) { await ecAlert('Restore failed — ' + err.message, 'Restore failed'); b.disabled = false; b.textContent = 'Restore'; }
     }));
   });
 
   /* ---------- Undo ---------- */
   shell.querySelector('#ecUndo').addEventListener('click', async () => {
-    if (previewing) { alert('Discard the current preview first.'); return; }
+    if (previewing) { ecToast('Discard the current preview first.'); return; }
     const btn = shell.querySelector('#ecUndo');
     /* Tell the owner WHAT Undo will restore (date), and warn loudly on a big jump. */
     let target = null;
@@ -1587,38 +1696,43 @@
         target = cur[0] || null;
       }
     } catch (e) { /* fall through to a generic confirm */ }
-    let msg = 'Undo the last change and restore the previous version?';
+    let msg = 'This undoes the last change and restores the previous version.';
+    let big = false;
     if (target) {
       const age = stampAgeDays(target.stamp);
-      msg = (age != null && age > 1)
-        ? ('⚠ This Undo rolls the page back to ' + target.when + ' — about ' + Math.round(age) + ' day(s) ago, which may discard newer work. Undo anyway?')
-        : ('Undo → restore the version from ' + target.when + '?');
+      big = (age != null && age > 1);
+      msg = big
+        ? ('⚠ This rolls the page back to ' + target.when + ' — about ' + Math.round(age) + ' day(s) ago, which may discard newer work.')
+        : ('This restores the version from ' + target.when + '.');
     }
-    if (!confirm(msg)) return;
+    if (!(await ecConfirm(msg, big ? 'Undo — big jump back' : 'Undo the last change?', 'Undo', big))) return;
     btn.disabled = true; btn.textContent = 'Reverting…';
     try {
       const r = await fetch(API + 'revert', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password: key }),
       });
-      if (r.status === 400) { alert((await r.text()) || 'Nothing to undo yet.'); btn.disabled = false; btn.textContent = '↩ Undo'; return; }   /* may be "Undo blocked: predates required parts…" */
+      if (r.status === 400) { await ecAlert((await r.text()) || 'Nothing to undo yet.', 'Cannot undo'); btn.disabled = false; btn.textContent = '↩ Undo'; return; }   /* may be "Undo blocked: predates required parts…" */
       if (!r.ok) throw new Error(await r.text() || r.status);
-      alert('Reverted' + (target ? ' to the version from ' + target.when : '') + '.');
+      await ecAlert('The page is back' + (target ? ' to the version from ' + target.when : '') + '.', 'Reverted ✓');
       saveScroll();
       location.reload();
     } catch (err) {
-      alert('Undo failed (' + err.message + ')');
+      await ecAlert('Undo failed (' + err.message + ')', 'Undo failed');
       btn.disabled = false; btn.textContent = '↩ Undo';
     }
   });
 
   /* ---------- Exit ---------- */
-  shell.querySelector('#ecExit').addEventListener('click', () => {
+  shell.querySelector('#ecExit').addEventListener('click', async () => {
     const pendingEdits = dirty.size || linkEdits.size || sectionsDirty || styleDirty || refineDirty || previewing;
     if (comments.size && !pendingEdits) {
-      if (!confirm('Discard your ' + comments.size + ' unsaved note' + (comments.size !== 1 ? 's' : '') + ' and exit? (They were never sent — Save or Apply notes first to keep them.)')) return;
+      if (!(await ecConfirm('Your ' + comments.size + ' note' + (comments.size !== 1 ? 's were' : ' was') +
+            ' never sent. Save, or Apply notes, to keep ' + (comments.size !== 1 ? 'them' : 'it') + '.',
+            'Discard your unsaved notes and exit?', 'Discard & exit', true))) return;
     } else if (pendingEdits || comments.size) {
-      if (!confirm('Discard unsaved changes/notes and exit?')) return;
+      if (!(await ecConfirm('Anything you have not saved will be lost.',
+            'Discard unsaved changes and exit?', 'Discard & exit', true))) return;
     }
     if (refining) fetch(API + 'refine/discard', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: key }) }).catch(() => {});
     sessionStorage.removeItem(EDIT_ACTIVE);   /* leave edit mode; stay logged in for 30 days */
@@ -1738,7 +1852,7 @@
            '<span class="ec-seo-count" id="' + id + 'c"></span></label>';
   }
   function openSeo() {
-    if (previewing || refining) { alert('Finish the current preview first.'); return; }
+    if (previewing || refining) { ecToast('Finish the current preview first.'); return; }
     const ov = document.createElement('div');
     ov.className = 'ec-modal-ov';
     ov.innerHTML = '<div class="ec-modal ec-seo-modal"><h3>Search &amp; social</h3>' +
@@ -1841,4 +1955,4 @@
     });
   }
 
-/* build 20260920-001357 */
+/* build 20260920-092410 */

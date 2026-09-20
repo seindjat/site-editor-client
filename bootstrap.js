@@ -31,17 +31,85 @@
     return !!(ae && (ae.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)));
   }
 
-  /* editor.js reads this global to know which password to send. */
+  /* ---- client error reporting --------------------------------------------
+     "It didn't work" used to leave no trace anywhere we could look: whatever
+     broke in the OWNER'S BROWSER — a loader that won't run, a panel that throws,
+     a save that dies before it reaches the server — was invisible to the logs,
+     the doctor and us. These errors now go to a capped server-side log the
+     nightly doctor reads.
+     Scope is deliberately narrow: errors from OUR files, or any error raised
+     while the owner is actually editing. A visitor's own site errors are not
+     our business and would drown the signal. At most a handful per page-load,
+     never the same one twice, and every failure in here is swallowed —
+     telemetry must never be able to break the page it is watching. */
+  var ERR_SEEN = {}, ERR_SENT = 0, ERR_MAX = 5;
+  function reportError(msg, src, line, stack) {
+    try {
+      if (ERR_SENT >= ERR_MAX || !msg) return;
+      var ours = /bootstrap\.js|editor\.js|editor-addons\.js/.test(src || '');
+      var editing = false;
+      try { editing = !!sessionStorage.getItem(EDIT_ACTIVE); } catch (e) { /* ignore */ }
+      if (!ours && !editing) return;
+      var k = String(msg) + '|' + (src || '') + '|' + (line || '');
+      if (ERR_SEEN[k]) return;
+      ERR_SEEN[k] = 1; ERR_SENT++;
+      fetch(API + 'client-error', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          msg: String(msg).slice(0, 300),
+          src: String(src || '').slice(0, 200),
+          line: line || 0,
+          url: String(location.href).slice(0, 200),
+          stack: String(stack || '').slice(0, 600),
+          build: _lastBuild || '',
+        }),
+        keepalive: true,                 /* still sends if the page is unloading */
+      }).catch(function () { /* never surface telemetry failures */ });
+    } catch (e) { /* ignore */ }
+  }
+  window.__ecReport = reportError;       /* editor.js reports its own caught failures */
+  window.addEventListener('error', function (e) {
+    /* Resource-load failures (a 404 image) arrive as a bare Event with no
+       .message — not our concern, and they would swamp the budget. */
+    if (e && e.message) reportError(e.message, e.filename, e.lineno, e.error && e.error.stack);
+  });
+  window.addEventListener('unhandledrejection', function (e) {
+    var r = e && e.reason;
+    if (r) reportError('unhandled rejection: ' + ((r && r.message) || r), '', 0, r && r.stack);
+  });
+
+  /* editor.js reads this global to know what credential to send.
+     The stored blob holds BOTH: `tok` is a signed, expiring SESSION TOKEN minted
+     by /auth — that is what the editor now sends, so the owner's password stops
+     travelling in the body of every save/refine/upload. `pw` is still kept
+     because the same-origin owner console (chat_server's /console) reads this
+     key directly for its single sign-on and only understands the password; when
+     the chat engine learns to accept tokens, `pw` can be dropped entirely.
+     Token first, password as the fallback — which also means an older cached
+     client, or a backend too old to mint tokens, keeps working unchanged. */
   window.getEditKey = function () {
     try {
       var s = JSON.parse(localStorage.getItem(EDIT_KEY) || 'null');
-      if (s && s.pw && s.exp > Date.now()) return s.pw;
+      if (s && (s.tok || s.pw) && s.exp > Date.now()) return s.tok || s.pw;
       if (s) localStorage.removeItem(EDIT_KEY);
     } catch (e) { /* private mode etc. */ }
     return null;
   };
-  function setEditKey(pw) {
-    try { localStorage.setItem(EDIT_KEY, JSON.stringify({ pw: pw, exp: Date.now() + EDIT_TTL })); } catch (e) { /* ignore */ }
+  function setEditKey(pw, tok) {
+    try {
+      localStorage.setItem(EDIT_KEY, JSON.stringify({
+        pw: pw, tok: tok || null, exp: Date.now() + EDIT_TTL,
+      }));
+    } catch (e) { /* ignore */ }
+  }
+  /* Slide the session forward without disturbing the stored password. */
+  function refreshToken(tok) {
+    if (!tok) return;
+    try {
+      var s = JSON.parse(localStorage.getItem(EDIT_KEY) || 'null') || {};
+      s.tok = tok; s.exp = Date.now() + EDIT_TTL;
+      localStorage.setItem(EDIT_KEY, JSON.stringify(s));
+    } catch (e) { /* ignore */ }
   }
   function clearEditKey() {
     try { localStorage.removeItem(EDIT_KEY); } catch (e) { /* ignore */ }
@@ -60,16 +128,18 @@
      build.txt bypassing the browser cache so a freshly-published build shows up
      immediately; otherwise (local path, or fetch failure) fall back to editorV. */
   var _buildP = null;
+  var _lastBuild = '';                  /* resolved build id, for error reports */
   function getBuild() {
     if (_buildP) return _buildP;
     var fallback = 'v' + V;
-    if (!BASE) { _buildP = Promise.resolve(fallback); return _buildP; }
+    if (!BASE) { _lastBuild = fallback; _buildP = Promise.resolve(fallback); return _buildP; }
     try {
       _buildP = fetch(BASE + 'build.txt', { cache: 'no-store' })
         .then(function (r) { return r.ok ? r.text() : ''; })
         .then(function (t) { t = (t || '').trim(); return /^[\w.\-]{1,40}$/.test(t) ? t : fallback; })
-        .catch(function () { return fallback; });
-    } catch (e) { _buildP = Promise.resolve(fallback); }
+        .catch(function () { return fallback; })
+        .then(function (b) { _lastBuild = b; return b; });
+    } catch (e) { _lastBuild = fallback; _buildP = Promise.resolve(fallback); }
     return _buildP;
   }
   /* Prefer an IMMUTABLE jsDelivr URL pinned to the build's git tag
@@ -218,7 +288,14 @@
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ password: pw }),
     }).then(function (res) {
-      if (res.ok) { setEditKey(pw); closeSignIn(); startEditor(); return; }
+      if (res.ok) {
+        /* Take the session token if this backend mints one; a 204 from an older
+           backend just means we carry on with the password. */
+        return res.json().catch(function () { return {}; }).then(function (j) {
+          setEditKey(pw, j && j.token);
+          closeSignIn(); startEditor();
+        });
+      }
       onFail(res.status === 401
         ? 'That password is not right — try again.'
         : 'Sign-in failed (' + res.status + '). Try again in a moment.');
@@ -338,6 +415,10 @@
     } catch (e) {
       arming = false;
       toast('Could not open the sign-in box here. Open the site in a normal browser tab and try again.', 8000);
+      /* Both the dialog AND prompt() failed — the owner is locked out of this
+         browser entirely. That is exactly the failure nobody could ever report,
+         so make sure we hear about it. */
+      reportError('sign-in unavailable: ' + (e && e.message), 'bootstrap.js', 0, e && e.stack);
     }
   }
   function enterEditMode() {
@@ -354,7 +435,12 @@
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ password: existing }),
     }).then(function (res) {
-      if (res.ok) { startEditor(); return; }               /* remembered key still valid */
+      if (res.ok) {                                        /* remembered key still valid */
+        /* Every /auth mints a fresh token, so an owner who keeps editing never
+           walks into an expiry. Fire-and-forget; opening must not wait on it. */
+        res.json().then(function (j) { refreshToken(j && j.token); }).catch(function () { /* older backend */ });
+        startEditor(); return;
+      }
       if (res.status === 401) {                             /* password changed → key is stale */
         clearEditKey();
         /* The reason goes INSIDE the dialog we are about to open — one surface,
@@ -416,4 +502,4 @@
   }
 })();
 
-/* build 20260920-001357 */
+/* build 20260920-092410 */
