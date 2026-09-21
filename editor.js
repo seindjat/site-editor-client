@@ -1655,13 +1655,32 @@
       'Discard the AI changes?', 'Discard', true))) return false;
     return closeRefine(skipReload, true);
   }
-  /* Age (in days) of a snapshot from its YYYYMMDD-HHMMSS stamp, or null. Used to warn
-     before a big jump back — a blind Undo once rolled the page back three weeks. */
-  function stampAgeDays(stamp) {
+  /* Snapshot stamps are UTC — the droplet runs on UTC and names each snapshot from
+     its own clock. Both of the things we do with a stamp used to ignore that:
+       - the server formatted the label with no timezone, so a Pacific owner was
+         shown a save at "Sep 21, 02:02 AM" while it was still Sep 20 evening for
+         them — a restore point dated in the future is not something you trust;
+       - this function parsed the stamp as LOCAL, so every age was off by the
+         viewer's UTC offset and a fresh snapshot could read as 7 hours in the
+         future, skewing the ">24h old" warning that guards a big jump back.
+     Parse as UTC, render in the viewer's own timezone. */
+  function stampDate(stamp) {
     var m = /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})/.exec(stamp || '');
     if (!m) return null;
-    var d = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
-    return (Date.now() - d.getTime()) / 86400000;
+    return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]));
+  }
+  function stampAgeDays(stamp) {
+    var d = stampDate(stamp);
+    return d ? (Date.now() - d.getTime()) / 86400000 : null;
+  }
+  /* The label the owner actually reads, in their own timezone. Falls back to
+     whatever the server sent if the stamp is an odd shape. */
+  function stampWhen(stamp, fallback) {
+    var d = stampDate(stamp);
+    if (!d) return fallback || stamp || '';
+    try {
+      return d.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    } catch (e) { return fallback || stamp || ''; }
   }
 
   /* ---------- History & restore points ---------- */
@@ -1680,7 +1699,7 @@
     const ov = document.createElement('div');
     ov.className = 'ec-modal-ov';
     const rows = (data.points || []).map((p) =>
-      '<div class="ec-hist-row"><span class="ec-hist-when">' + p.when +
+      '<div class="ec-hist-row"><span class="ec-hist-when">' + escapeHtml(stampWhen(p.stamp, p.when)) +
       (p.where === 'undone' ? ' <em>(undone)</em>' : '') + '</span>' +
       '<button type="button" class="ec-hist-restore" data-stamp="' + p.stamp + '">Restore</button></div>').join('')
       || '<p class="ec-modal-sub">No restore points yet.</p>';
@@ -1733,8 +1752,8 @@
       const age = stampAgeDays(target.stamp);
       big = (age != null && age > 1);
       msg = big
-        ? ('⚠ This rolls the page back to ' + target.when + ' — about ' + Math.round(age) + ' day(s) ago, which may discard newer work.')
-        : ('This restores the version from ' + target.when + '.');
+        ? ('⚠ This rolls the page back to ' + stampWhen(target.stamp, target.when) + ' — about ' + Math.round(age) + ' day(s) ago, which may discard newer work.')
+        : ('This restores the version from ' + stampWhen(target.stamp, target.when) + '.');
     }
     if (!(await ecConfirm(msg, big ? 'Undo — big jump back' : 'Undo the last change?', 'Undo', big))) return;
     btn.disabled = true; btn.textContent = 'Reverting…';
@@ -1745,7 +1764,7 @@
       });
       if (r.status === 400) { await ecAlert((await r.text()) || 'Nothing to undo yet.', 'Cannot undo'); btn.disabled = false; btn.textContent = '↩ Undo'; return; }   /* may be "Undo blocked: predates required parts…" */
       if (!r.ok) throw new Error(await r.text() || r.status);
-      await ecAlert('The page is back' + (target ? ' to the version from ' + target.when : '') + '.', 'Reverted ✓');
+      await ecAlert('The page is back' + (target ? ' to the version from ' + stampWhen(target.stamp, target.when) : '') + '.', 'Reverted ✓');
       saveScroll();
       location.reload();
     } catch (err) {
@@ -1992,4 +2011,4 @@
      Keep this close in the LAST numbered file. */
 })();
 
-/* build 20260920-143220 */
+/* build 20260920-201258 */
