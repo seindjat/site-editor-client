@@ -250,7 +250,12 @@ html.ec-frame section[hidden] { display: block !important; opacity: 0.4; outline
 
 /* the right-hand cluster: Refine · notes · More | Undo History SAVE Exit */
 .ec-row-right { margin-left: auto; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.ec-row-right .ec-status { flex-basis: 100%; text-align: right; margin: 0; }
+/* Status sits INLINE. Giving it flex-basis:100% pushed it onto its own line and
+   cost ~40px of chrome for eleven characters. */
+.ec-row-right .ec-status { margin: 0 0 0 4px; white-space: nowrap; opacity: 0.75; }
+/* slimmer controls — the toolbar is chrome, not the point of the screen */
+.ec-toolbar .ec-btn { padding: 7px 12px; }
+.ec-toolbar .ec-dev { padding: 6px 10px; }
 
 /* Save is the one unmistakable control */
 .ec-save { font-weight: 800 !important; }
@@ -376,4 +381,4 @@ html.ec-frame section[hidden] { display: block !important; opacity: 0.4; outline
 .ec-hist-restore { background: var(--orange-soft, #fff3e0); color: var(--orange-dark, #d97b06); border: 1px solid var(--orange, #f7941d); border-radius: 7px; padding: 6px 14px; font: 700 0.82rem var(--font-body, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif); cursor: pointer; }
 .ec-hist-restore:hover { background: var(--orange, #f7941d); color: #fff; }
 
-/* build 20260921-165307 */
+/* build 20260921-165514 */
