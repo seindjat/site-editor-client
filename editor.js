@@ -267,16 +267,16 @@
   function refreshCostEstimate() {
     fetch(API + 'cost-estimate', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password: key, model: getAiModel() }),
+      body: JSON.stringify({ password: key, model: getAiModel(), page: currentPage }),
     }).then((r) => r.ok ? r.json() : null)
       .then((d) => { if (d) { costUnknown = !!d.unknown; baseUsd = d.baseUsd || 0; perNoteUsd = d.perNoteUsd || 0; updateCost(); } })
       .catch(() => {});
   }
   function refreshImplState() {
     const total = serverNotes + comments.size;
-    /* the whole Notes group is hidden until there's at least one note (home page only) */
-    ecNotesGroup.style.display = (total > 0 && currentPage === 'index.html') ? '' : 'none';
-    ecImpl.disabled = total === 0 || previewing || currentPage !== 'index.html';
+    /* the whole Notes group stays hidden until there's at least one note */
+    ecNotesGroup.style.display = total > 0 ? '' : 'none';
+    ecImpl.disabled = total === 0 || previewing;
     ecImpl.title = 'Send your notes to the AI to apply them all at once';
     updateCost();
   }
@@ -295,19 +295,27 @@
   /* The AI implement + comment-note flow is home-page-only for now (its prompt is
      index-specific). On other pages, only direct text/link editing is offered. */
   function applyPageScope() {
-    const home = currentPage === 'index.html';
-    ecRefine.style.display = home ? '' : 'none';
-    const seo = shell.querySelector('#ecSeo'); if (seo) seo.style.display = home ? '' : 'none';
-    refreshImplState();   /* shows/hides the Notes group by note-count + page */
+    /* Refine, SEO and the Notes group used to be hidden on every page but the
+       home page, because the AI and SEO endpoints were hardcoded to index.html.
+       They now take the page they are given, so these work wherever the owner
+       is — which on a 23-page site is the difference between AI on 1 page and
+       AI on all of them. Counts and cost are per page, so re-fetch on a switch. */
+    refreshNoteCount();
+    refreshCostEstimate();
+    refreshImplState();
   }
   ecSave.disabled = true;   /* nothing to save until the owner makes a change */
   refreshImplState(); /* start disabled until we know the note count */
-  fetch(API + 'note-count', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ password: key }),
-  }).then((r) => r.ok ? r.json() : { count: 0 })
-    .then((d) => { serverNotes = d.count || 0; refreshImplState(); })
-    .catch(() => {});
+  /* Notes are per page, so the count must be re-read whenever the page changes. */
+  function refreshNoteCount() {
+    fetch(API + 'note-count', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: key, page: currentPage }),
+    }).then((r) => r.ok ? r.json() : { count: 0 })
+      .then((d) => { serverNotes = d.count || 0; refreshImplState(); })
+      .catch(() => {});
+  }
+  refreshNoteCount();
   refreshCostEstimate();
 
   function applyDevice(k) {
@@ -540,7 +548,7 @@
     openNoteModal(sectionLabel(sec), dev, cur ? cur.text : '', (val) => {
       if (val === null) return;
       if (!val.trim()) comments.delete(sec);
-      else comments.set(sec, { section: sectionLabel(sec), device: DEVICES[currentDevice].label, text: val.trim() });
+      else comments.set(sec, { page: currentPage, section: sectionLabel(sec), device: DEVICES[currentDevice].label, text: val.trim() });
       refreshNoteMarks();
       updateStatus();   /* also refreshes the Notes group + cost */
     });
@@ -1144,10 +1152,9 @@
     const sec = el.closest('body > section');
     if (sec) {
       acts.push({ sep: true });
-      /* Add/Edit note for the AI — home page only (the AI implement flow is index-specific) */
-      if (currentPage === 'index.html') {
-        acts.push({ label: comments.has(sec) ? '💬 Edit note' : '💬 Add note', fn: () => openComment(sec) });
-      }
+      /* Add/Edit note for the AI — on any page now that notes carry their page
+         and /implement edits the page it is given. */
+      acts.push({ label: comments.has(sec) ? '💬 Edit note' : '💬 Add note', fn: () => openComment(sec) });
       acts.push({ label: sec.hasAttribute('hidden') ? '👁 Show section' : '🙈 Hide section', fn: () => ctxToggleHideSection(sec) });
       acts.push({ label: '↑', title: 'Move this section up', fn: () => moveSection(sec, -1) });
       acts.push({ label: '↓', title: 'Move this section down', fn: () => moveSection(sec, 1) });
@@ -1382,7 +1389,7 @@
       }
       const r = await fetch(API + 'implement', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: key, model: getAiModel() }),
+        body: JSON.stringify({ password: key, model: getAiModel(), page: currentPage }),
       });
       const txt = await r.text();
       if (!r.ok) throw new Error(txt || r.status);
@@ -1414,7 +1421,11 @@
      JS-only chrome — exactly like the live editing iframe (html.ec-frame). Shared by
      the AI implement preview and the conversational-refine preview. */
   async function buildPreviewSrcdoc(files) {
-    const indexHTML = files['index.html'] || await (await fetch('index.html', { cache: 'no-store' })).text();
+    /* Preview whichever page is being edited, not always index.html — otherwise an
+       AI change to a service page rendered the home page and the owner approved a
+       preview of something they had not changed. */
+    const pg = currentPage;
+    const indexHTML = files[pg] || await (await fetch(pg, { cache: 'no-store' })).text();
     const cssText = files['styles.css'] || await (await fetch('styles.css', { cache: 'no-store' })).text();
     const origin = location.origin + '/';
     const previewFix = '<style>.reveal{opacity:1 !important;transform:none !important}' +
@@ -1598,7 +1609,7 @@
     try {
       const r = await fetch(API + 'refine/message', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: key, text, device: scope.label, tier: scope.tier, maxWidth: scope.maxWidth, model: getAiModel() }),
+        body: JSON.stringify({ password: key, text, device: scope.label, tier: scope.tier, maxWidth: scope.maxWidth, model: getAiModel(), page: currentPage }),
       });
       const txt = await r.text();
       if (!r.ok) throw new Error(txt || r.status);
@@ -1631,7 +1642,7 @@
     btn.disabled = true; btn.textContent = 'Saving…';
     try {
       const r = await fetch(API + 'refine/publish', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: key }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: key, page: currentPage }),
       });
       if (!r.ok) throw new Error(await r.text() || r.status);
       refining = false; refineDirty = false;
@@ -1916,7 +1927,7 @@
     ov.querySelector('#ecSeoCancel').addEventListener('click', close);
     ov.addEventListener('click', (e) => { if (e.target === ov) close(); });
     const body = ov.querySelector('#ecSeoBody'), saveBtn = ov.querySelector('#ecSeoSave'), msg = ov.querySelector('#ecSeoMsg');
-    fetch(API + 'seo/get', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: key }) })
+    fetch(API + 'seo/get', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: key, page: currentPage }) })
       .then((r) => r.ok ? r.json() : null).then((d) => {
         if (!d) { body.textContent = 'Could not load.'; return; }
         body.innerHTML =
@@ -1941,6 +1952,7 @@
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             password: key,
+            page: currentPage,
             title: ov.querySelector('#ecSeoTitle').value,
             description: ov.querySelector('#ecSeoDesc').value,
             ogTitle: ov.querySelector('#ecSeoOgTitle').value,
@@ -2011,4 +2023,4 @@
      Keep this close in the LAST numbered file. */
 })();
 
-/* build 20260920-201258 */
+/* build 20260920-220016 */
