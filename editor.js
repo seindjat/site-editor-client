@@ -54,6 +54,11 @@
     };
   })();
   const API = CFG.apiBase;
+  /* Owner-only links a SITE wants inside the editor (e.g. a gallery manager).
+     metisconst floated two of these over the editor at z-index 2147483000; they
+     belong in the More menu, not on top of the toolbar. */
+  const OWNER_LINKS = ((window.EDITOR_CONFIG || {}).ownerLinks || [])
+    .filter((l) => l && l.href && l.label).slice(0, 6);
   const EDIT_SEL = CFG.editSel;
   const EDIT_ACTIVE = CFG.storePrefix + 'EditActive';
   const AI_MODEL_KEY = CFG.storePrefix + 'AiModel';
@@ -175,11 +180,12 @@
   shell.className = 'ec-shell';
   shell.innerHTML =
     '<div class="ec-toolbar">' +
-      /* ── Row 1: page + device pickers (left), primary actions (right corner) ── */
+      /* ONE row. It used to be two, carrying 14 buttons with no grouping — and the
+         add-ons wedged Review/Visibility/AI image directly against Save, the one
+         button that has to be unmistakable. Now: context on the left, the things
+         you reach for constantly on the right, and everything occasional behind
+         "More". Nothing is more than one click away. */
       '<div class="ec-toolbar-row ec-row-main">' +
-        /* A dropdown, not a row of tabs: 22 pages as buttons ran off the screen and
-           took the device picker and Save/Exit with them. One line, any page count.
-           Hidden entirely for a single-page site, where a switcher is just noise. */
         (PAGES.length > 1
           ? '<label class="ec-pages"><span class="ec-pages-lbl">Page</span>' +
               '<select class="ec-page-sel" aria-label="Page to edit">' +
@@ -193,44 +199,50 @@
             `<button type="button" data-dev="${k}" class="ec-dev${k === 'desktop' ? ' is-active' : ''}">${d.label}</button>`).join('') +
         '</div>' +
         '<span class="ec-dim"></span>' +
+
         '<div class="ec-row-right">' +
+          '<button type="button" class="ec-btn ec-ai-primary" id="ecRefine" title="Chat with the AI to change this page — &quot;make it bigger&quot;, &quot;now more orange&quot;…">🪄 Refine with AI</button>' +
+          '<span class="ec-notes-grp" id="ecNotesGroup" style="display:none">' +
+            '<button type="button" class="ec-btn ec-impl" id="ecImpl" title="Send your notes to the AI to apply them all at once">🤖 Apply notes</button>' +
+            '<span class="ec-cost" id="ecCost"></span>' +
+          '</span>' +
+          /* everything occasional lives here */
+          '<div class="ec-more-wrap">' +
+            '<button type="button" class="ec-btn ec-more-btn" id="ecMore" aria-haspopup="true" aria-expanded="false" title="More tools">More ▾</button>' +
+            '<div class="ec-more-menu" id="ecMoreMenu" hidden>' +
+              '<div class="ec-more-grp">Page</div>' +
+              '<button type="button" class="ec-more-item" id="ecSeo" title="Edit the page title, Google search description, and social-share preview text">🔎 Search &amp; social (SEO)</button>' +
+              '<div class="ec-more-slot" id="ecMoreTools"></div>' +
+              (CFG.consoleUrl
+                ? '<div class="ec-more-grp">Your business</div>' +
+                  '<button type="button" class="ec-more-item ec-console" id="ecStats" data-console-tab="analytics" title="Your visitor statistics">📊 Visitor stats</button>' +
+                  '<button type="button" class="ec-more-item ec-console" id="ecChatKb" data-console-tab="chat" title="The chat assistant’s knowledge &amp; recent leads">💬 Chat &amp; leads</button>'
+                : '') +
+              (OWNER_LINKS.length
+                ? OWNER_LINKS.map((l) =>
+                    '<a class="ec-more-item" href="' + escapeHtml(l.href) + '"' +
+                    (l.newTab === false ? '' : ' target="_blank"') + ' rel="noopener">' +
+                    escapeHtml(l.label) + '</a>').join('')
+                : '') +
+              '<div class="ec-more-grp">Editor</div>' +
+              '<button type="button" class="ec-more-item" id="ecAiSettings" title="AI model settings">⚙ AI model</button>' +
+              '<button type="button" class="ec-more-item" id="ecHelp" title="How to use the editor">❔ How to edit this page</button>' +
+            '</div>' +
+          '</div>' +
+          '<span class="ec-vsep"></span>' +
           '<button type="button" class="ec-btn ec-undo" id="ecUndo" title="Undo the last change">↩ Undo</button>' +
           '<button type="button" class="ec-btn ec-history" id="ecHistory" title="Change history & restore points">🕘 History</button>' +
           '<button type="button" class="ec-btn ec-save" id="ecSave">💾 Save changes</button>' +
           '<button type="button" class="ec-btn ec-exit" id="ecExit">Exit</button>' +
+          '<span class="ec-status"></span>' +
         '</div>' +
       '</div>' +
-      /* ── Row 2: everything else — title, AI, notes, history, status ── */
-      '<div class="ec-toolbar-row ec-row-tools">' +
-        '<strong class="ec-title">✏️ Editing</strong>' +
-        '<button type="button" class="ec-help" id="ecHelp" title="How to use the editor" aria-label="Help">?</button>' +
-        '<span class="ec-sep"></span>' +
-        '<button type="button" class="ec-cmt-toggle ec-refine-toggle ec-ai-primary" id="ecRefine" title="Chat with the AI to change the page — &quot;make it bigger&quot;, &quot;now more orange&quot;…">🪄 Refine with AI</button>' +
-        '<button type="button" class="ec-help ec-ai-gear" id="ecAiSettings" title="AI model settings" aria-label="AI model settings">⚙</button>' +
-        '<button type="button" class="ec-btn ec-mini ec-seo" id="ecSeo" title="Edit the page title, Google search description, and social-share preview text">🔎 SEO</button>' +
-        /* Owner console (visitor stats + chat knowledge/leads) — only when CFG.consoleUrl is
-           set. Buttons open the same-origin console as an IN-EDITOR panel (see 98-console.js)
-           so the owner stays in one place; it signs itself in via the shared owner key. */
-        (CFG.consoleUrl
-          ? '<span class="ec-sep"></span>' +
-            '<button type="button" class="ec-btn ec-mini ec-console" id="ecStats" data-console-tab="analytics" title="Your visitor statistics">📊 Stats</button>' +
-            '<button type="button" class="ec-btn ec-mini ec-console" id="ecChatKb" data-console-tab="chat" title="The chat assistant’s knowledge &amp; recent leads">💬 Chat</button>'
-          : '') +
-        /* Notes group — appears only once the owner has added a note (via a section).
-           "Add note" now lives in the section click-menu, not as a toolbar toggle. */
-        '<span class="ec-notes-grp" id="ecNotesGroup" style="display:none">' +
-          '<span class="ec-sep"></span>' +
-          '<span class="ec-grp-label ec-muted">Notes</span>' +
-          '<button type="button" class="ec-btn ec-impl ec-mini" id="ecImpl" title="Send your notes to the AI to apply them all at once">🤖 Apply notes</button>' +
-          '<span class="ec-cost" id="ecCost"></span>' +
-        '</span>' +
-        '<span class="ec-status"></span>' +
-        /* legacy mode buttons — kept in the DOM (hidden) so their code still resolves */
-        '<span class="ec-grp-label ec-legacy">Edit</span>' +
-        '<button type="button" class="ec-cmt-toggle ec-link-toggle ec-legacy" id="ecLink" title="Edit where links, the phone number, and buttons point">🔗 Links</button>' +
-        '<button type="button" class="ec-cmt-toggle ec-img-toggle ec-legacy" id="ecImg" title="Replace a photo on the page">🖼️ Photos</button>' +
-        '<button type="button" class="ec-cmt-toggle ec-style-toggle ec-legacy" id="ecStyle" title="Click any element to change its color, size and spacing">🎨 Style</button>' +
-        '<button type="button" class="ec-cmt-toggle ec-sec-toggle ec-legacy" id="ecSec" title="Hide / show and reorder whole sections">📑 Sections</button>' +
+      /* legacy mode buttons — kept in the DOM (hidden) so their code still resolves */
+      '<div class="ec-legacy-hold" hidden>' +
+        '<button type="button" id="ecLink"></button>' +
+        '<button type="button" id="ecImg"></button>' +
+        '<button type="button" id="ecStyle"></button>' +
+        '<button type="button" id="ecSec"></button>' +
       '</div>' +
     '</div>' +
     '<div class="ec-stage"><iframe class="ec-frame-el" id="ecFrame"></iframe></div>';
@@ -298,6 +310,31 @@
   }
   /* The AI implement + comment-note flow is home-page-only for now (its prompt is
      index-specific). On other pages, only direct text/link editing is offered. */
+  /* ---- the More menu ---------------------------------------------------- */
+  const moreBtn = shell.querySelector('#ecMore');
+  const moreMenu = shell.querySelector('#ecMoreMenu');
+  function closeMore() {
+    if (!moreMenu) return;
+    moreMenu.hidden = true;
+    moreBtn.setAttribute('aria-expanded', 'false');
+  }
+  function toggleMore() {
+    if (!moreMenu) return;
+    const open = moreMenu.hidden;
+    moreMenu.hidden = !open;
+    moreBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+  if (moreBtn) {
+    moreBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleMore(); });
+    /* any choice inside closes it; so does a click elsewhere or Escape */
+    moreMenu.addEventListener('click', (e) => { if (e.target.closest('.ec-more-item')) closeMore(); });
+    document.addEventListener('click', (e) => {
+      if (moreMenu.hidden) return;
+      if (!e.target.closest || !e.target.closest('.ec-more-wrap')) closeMore();
+    }, true);
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMore(); });
+  }
+
   function applyPageScope() {
     /* Refine, SEO and the Notes group used to be hidden on every page but the
        home page, because the AI and SEO endpoints were hardcoded to index.html.
@@ -2035,4 +2072,4 @@
      Keep this close in the LAST numbered file. */
 })();
 
-/* build 20260920-231503 */
+/* build 20260921-165307 */

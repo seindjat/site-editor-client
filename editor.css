@@ -240,9 +240,42 @@ html.ec-frame section[hidden] { display: block !important; opacity: 0.4; outline
 .ec-crop-zoom input[type="range"] { flex: 1; accent-color: #7c3aed; }
 .ec-crop-msg { font: 600 0.82rem var(--font-body, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif); color: #D64541; margin-right: auto; align-self: center; }
 
+/* ---------- single-row toolbar ---------- */
+/* Was two rows of 14 ungrouped buttons. Now: context left, constant actions
+   right, everything occasional behind More. */
+.ec-toolbar { padding: 7px 14px; gap: 0; }
+.ec-row-main { flex-wrap: wrap; row-gap: 6px; }
+.ec-vsep { width: 1px; height: 22px; background: rgba(255,255,255,0.14); margin: 0 4px; flex: 0 0 auto; }
+.ec-legacy-hold { display: none !important; }
+
+/* the right-hand cluster: Refine · notes · More | Undo History SAVE Exit */
+.ec-row-right { margin-left: auto; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ec-row-right .ec-status { flex-basis: 100%; text-align: right; margin: 0; }
+
+/* Save is the one unmistakable control */
+.ec-save { font-weight: 800 !important; }
+.ec-ai-primary { background: #6d4aff; border-color: #6d4aff; color: #fff; }
+.ec-ai-primary:hover { background: #5b3ae0; }
+
+/* ---------- More menu ---------- */
+.ec-more-wrap { position: relative; flex: 0 0 auto; }
+.ec-more-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 10;
+  min-width: 232px; max-height: 70vh; overflow-y: auto; padding: 6px;
+  background: #24242a; border: 1px solid #3a3a42; border-radius: 12px;
+  box-shadow: 0 16px 44px rgba(0,0,0,0.5); display: flex; flex-direction: column; gap: 2px; }
+.ec-more-menu[hidden] { display: none; }
+.ec-more-grp { font: 700 10px var(--font-body, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif);
+  color: #8a8a93; text-transform: uppercase; letter-spacing: 0.06em; padding: 8px 10px 4px; }
+.ec-more-item { display: block; width: 100%; box-sizing: border-box; text-align: left;
+  background: none; border: 0; color: #e9e9ee; text-decoration: none;
+  font: 600 13px/1.3 var(--font-body, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif);
+  padding: 9px 10px; border-radius: 8px; cursor: pointer; }
+.ec-more-item:hover { background: #33333c; }
+.ec-more-slot { display: contents; }
+
 /* editor shell (parent window) */
 .ec-open { overflow: hidden !important; }
-.ec-shell { position: fixed; inset: 0; z-index: 99999; background: #1c1c20; display: flex; flex-direction: column; }
+.ec-shell { position: fixed; inset: 0; z-index: 2147483400; background: #1c1c20; display: flex; flex-direction: column; }
 .ec-toolbar { display: flex; flex-direction: column; gap: 6px; padding: 8px 14px; background: #111; color: #fff; }
 .ec-toolbar-row { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
 .ec-row-tools { border-top: 1px solid rgba(255,255,255,0.08); padding-top: 7px; }
@@ -343,4 +376,4 @@ html.ec-frame section[hidden] { display: block !important; opacity: 0.4; outline
 .ec-hist-restore { background: var(--orange-soft, #fff3e0); color: var(--orange-dark, #d97b06); border: 1px solid var(--orange, #f7941d); border-radius: 7px; padding: 6px 14px; font: 700 0.82rem var(--font-body, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif); cursor: pointer; }
 .ec-hist-restore:hover { background: var(--orange, #f7941d); color: #fff; }
 
-/* build 20260920-231503 */
+/* build 20260921-165307 */

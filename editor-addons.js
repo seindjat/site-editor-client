@@ -88,9 +88,17 @@
   function inject(save, id, label, title, fn) {
     var b = document.createElement('button');
     b.id = id; b.type = 'button';
-    b.className = (save.className || 'ec-btn').replace(/\bec-save\b/, '').trim() || 'ec-btn';
     b.textContent = label; b.title = title;
-    save.parentNode.insertBefore(b, save);
+    /* These belong in the More menu. They used to be inserted directly BEFORE the
+       Save button, which crowded the one control that has to be unmistakable. */
+    var slot = document.getElementById('ecMoreTools');
+    if (slot) {
+      b.className = 'ec-more-item';
+      slot.appendChild(b);
+    } else {                                  /* older toolbar — keep the old spot */
+      b.className = (save.className || 'ec-btn').replace(/\bec-save\b/, '').trim() || 'ec-btn';
+      save.parentNode.insertBefore(b, save);
+    }
     b.addEventListener('click', fn);
   }
 
@@ -354,4 +362,4 @@
   }
 })();
 
-/* build 20260920-231503 */
+/* build 20260921-165307 */
