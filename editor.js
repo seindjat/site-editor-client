@@ -104,6 +104,7 @@
   const STYLE_PROPS = ['color', 'font-size', 'background-color', 'padding', 'text-align', 'font-weight'];
   let currentDevice = 'desktop';
   let currentPage = 'index.html';
+  let pageAiEditable = true;    /* set from /note-count per page; see refreshImplState */
   let frameDoc = null;
   let previewing = false;       // true while showing an un-published AI preview
   let pendingFiles = null;
@@ -274,9 +275,12 @@
   }
   function refreshImplState() {
     const total = serverNotes + comments.size;
-    /* the whole Notes group stays hidden until there's at least one note */
-    ecNotesGroup.style.display = total > 0 ? '' : 'none';
-    ecImpl.disabled = total === 0 || previewing;
+    /* A page can be owner-editable but not AI-editable (ai_editable in the site
+       config) — kitchen's privacy page is. Offering Refine/Apply notes there
+       would just fail at the server, so hide them and say why on hover. */
+    ecRefine.style.display = pageAiEditable ? '' : 'none';
+    ecNotesGroup.style.display = (total > 0 && pageAiEditable) ? '' : 'none';
+    ecImpl.disabled = total === 0 || previewing || !pageAiEditable;
     ecImpl.title = 'Send your notes to the AI to apply them all at once';
     updateCost();
   }
@@ -312,7 +316,12 @@
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ password: key, page: currentPage }),
     }).then((r) => r.ok ? r.json() : { count: 0 })
-      .then((d) => { serverNotes = d.count || 0; refreshImplState(); })
+      .then((d) => {
+        serverNotes = d.count || 0;
+        /* the server is the authority on which pages the AI may write */
+        if (typeof d.aiEditable === 'boolean') pageAiEditable = d.aiEditable;
+        refreshImplState();
+      })
       .catch(() => {});
   }
   refreshNoteCount();
@@ -1152,9 +1161,12 @@
     const sec = el.closest('body > section');
     if (sec) {
       acts.push({ sep: true });
-      /* Add/Edit note for the AI — on any page now that notes carry their page
-         and /implement edits the page it is given. */
-      acts.push({ label: comments.has(sec) ? '💬 Edit note' : '💬 Add note', fn: () => openComment(sec) });
+      /* Add/Edit note for the AI — on any page the AI may actually write. Notes
+         carry their page and /implement edits the page it is given, so the only
+         remaining limit is ai_editable. */
+      if (pageAiEditable) {
+        acts.push({ label: comments.has(sec) ? '💬 Edit note' : '💬 Add note', fn: () => openComment(sec) });
+      }
       acts.push({ label: sec.hasAttribute('hidden') ? '👁 Show section' : '🙈 Hide section', fn: () => ctxToggleHideSection(sec) });
       acts.push({ label: '↑', title: 'Move this section up', fn: () => moveSection(sec, -1) });
       acts.push({ label: '↓', title: 'Move this section down', fn: () => moveSection(sec, 1) });
@@ -2023,4 +2035,4 @@
      Keep this close in the LAST numbered file. */
 })();
 
-/* build 20260920-220016 */
+/* build 20260920-231503 */
