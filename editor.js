@@ -89,6 +89,28 @@
   }
   function aiModelLabel(id) { const m = AI_MODELS.find((x) => x.id === id); return m ? m.label.split(' — ')[0] : id; }
 
+  /* Watch every call to OUR api for a 401. The editor makes ~20 such calls from a
+     dozen modules; rather than thread a check through each one, observe them
+     centrally here. Purely an observer — the response is passed through untouched,
+     and non-API fetches (the site's own) are ignored. */
+  (function watchAuth() {
+    if (!window.fetch || window.__ecAuthWatch) return;
+    window.__ecAuthWatch = true;
+    var orig = window.fetch.bind(window);
+    window.fetch = function (input, init) {
+      var pr = orig(input, init);
+      try {
+        var url = (typeof input === 'string') ? input : (input && input.url) || '';
+        if (url.indexOf(API) === 0) {
+          pr.then(function (res) {
+            if (res && res.status === 401 && window.__ecSessionExpired) window.__ecSessionExpired();
+          }, function () { /* network errors are the caller's business */ });
+        }
+      } catch (e) { /* never let the observer break a request */ }
+      return pr;
+    };
+  })();
+
   const key = getEditKey();
   const dirty = new Map();      // EDIT_SEL index -> innerHTML
   const linkEdits = new Map();  // editable-link index -> {href, text|null}
@@ -2072,4 +2094,4 @@
      Keep this close in the LAST numbered file. */
 })();
 
-/* build 20260921-165514 */
+/* build 20260921-172023 */

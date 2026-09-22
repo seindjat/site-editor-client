@@ -485,6 +485,24 @@
       startEditor();                                        /* transient network blip → open optimistically */
     });
   }
+  /* The editor calls this when a request comes back 401 MID-SESSION — the stored
+     credential stopped being valid while the owner was working (password changed,
+     session expired, the server's signing secret rotated). Before this, every
+     action just failed with its own cryptic message, and the repeated 401s walked
+     the owner into the wrong-password rate limit: "Could not save: Too many failed
+     attempts" after doing nothing wrong. Clear the dead key and ask them to sign
+     in again, once. */
+  var reauthing = false;
+  window.__ecSessionExpired = function () {
+    if (reauthing || document.querySelector('form input[type=password]')) return;
+    reauthing = true;
+    clearEditKey();
+    arming = true;                      /* promptAndAuth assumes it */
+    promptAndAuth('Your sign-in expired while you were working, so that change was not saved. '
+                + 'Sign in again and retry it — nothing you typed has been lost.');
+    setTimeout(function () { reauthing = false; }, 1000);
+  };
+
   var btn = document.getElementById('editModeBtn');
   if (btn) {
     btn.addEventListener('click', enterEditMode);
@@ -533,4 +551,4 @@
   }
 })();
 
-/* build 20260921-165514 */
+/* build 20260921-172023 */
