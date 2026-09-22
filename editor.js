@@ -132,6 +132,7 @@
   let currentDevice = 'desktop';
   let currentPage = 'index.html';
   let pageAiEditable = true;    /* set from /note-count per page; see refreshImplState */
+  let pendingNotes = [];        /* the queued notes themselves, so they can be shown */
   let frameDoc = null;
   let previewing = false;       // true while showing an un-published AI preview
   let pendingFiles = null;
@@ -323,7 +324,12 @@
     if (linkEdits.size) bits.push(`${linkEdits.size} link${linkEdits.size !== 1 ? 's' : ''}`);
     if (styleDirty) bits.push(`${styleEdits.size} styled`);
     if (sectionsDirty) bits.push('layout changed');
-    bits.push(`${comments.size} note${comments.size !== 1 ? 's' : ''}`);
+    /* Count queued notes as well as this session's. Saying "0 notes" while the
+       Apply-notes button was lit is how a note from months earlier got applied
+       on a click, for real money, with nothing on screen to explain it. */
+    const totalNotes = comments.size + serverNotes;
+    bits.push(`${totalNotes} note${totalNotes !== 1 ? 's' : ''}` +
+              (serverNotes && !comments.size ? ' queued' : ''));
     status.textContent = bits.join(' · ');
     /* Save is only active when there's a NEW change this session (styleDirty, not the
        count of loaded-from-save overrides) */
@@ -377,6 +383,7 @@
     }).then((r) => r.ok ? r.json() : { count: 0 })
       .then((d) => {
         serverNotes = d.count || 0;
+        pendingNotes = d.notes || [];
         /* the server is the authority on which pages the AI may write */
         if (typeof d.aiEditable === 'boolean') pageAiEditable = d.aiEditable;
         refreshImplState();
@@ -446,6 +453,14 @@
         row.className = 'ec-modal-row';
         row.appendChild(document.createElement('span'));
         const box = document.createElement('div');
+        /* optional third choice, e.g. "Discard notes" beside Cancel / Apply */
+        if (opts.extra) {
+          const x = document.createElement('button');
+          x.type = 'button'; x.className = 'ec-modal-del';
+          x.textContent = opts.extra;
+          x.addEventListener('click', () => finish('extra'));
+          box.appendChild(x);
+        }
         if (opts.cancel !== false) {
           const c = document.createElement('button');
           c.type = 'button'; c.className = 'ec-modal-cancel';
@@ -479,6 +494,9 @@
     ecDialog({ msg: msg, title: title || 'Heads up', cancel: false, okLabel: 'OK' });
   const ecConfirm = (msg, title, okLabel, danger) =>
     ecDialog({ msg: msg, title: title || 'Just checking', okLabel: okLabel || 'Yes', danger: danger });
+  /* three-way: resolves true (ok), 'extra' (the middle choice) or false (cancel) */
+  const ecConfirm3 = (msg, title, okLabel, extraLabel) =>
+    ecDialog({ msg: msg, title: title || 'Just checking', okLabel: okLabel || 'Yes', extra: extraLabel });
   /* ---------- Page switcher (Home / Privacy) ---------- */
   async function switchPage(file) {
     if (file === currentPage || previewing) return;
@@ -1448,6 +1466,40 @@
   ecImpl.addEventListener('click', async () => {
     if (ecImpl.disabled || previewing) return;
     if (refining && !closeRefine()) return;
+
+    /* SHOW WHAT WILL BE SENT, FIRST. Notes queue on the server and survive until
+       applied — one written in June sat for three months, lit the Apply button up
+       on a later visit, and cost real money on a click with nothing on screen
+       saying what it was. Never spend the owner's money on text they cannot see. */
+    const queued = pendingNotes.slice();
+    const mine = [...comments.values()].map((c) => ({ t: '', section: c.section, text: c.text }));
+    const all = queued.concat(mine);
+    if (all.length) {
+      const when = (t) => {
+        if (!t) return 'just now';
+        const d = new Date(t.replace(' ', 'T') + 'Z');
+        return isNaN(d) ? t : d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+      };
+      const list = all.map((n) => '• [' + (n.section || 'section') + ' · ' + when(n.t) + '] ' + n.text).join('\n\n');
+      const ok = await ecConfirm3(
+        'These notes will be sent to the AI:\n\n' + list +
+        '\n\nApplying costs roughly ' + (ecCost.textContent || 'a small amount').replace(/^≈\s*/, '') + '.',
+        'Apply ' + all.length + ' note' + (all.length !== 1 ? 's' : '') + '?',
+        'Apply notes', queued.length ? 'Discard queued' : null);
+      if (ok === 'extra') {                      /* throw the queued ones away, spend nothing */
+        try {
+          await fetch(API + 'notes/clear', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: key, page: currentPage }),
+          });
+        } catch (e) { /* reported by the auth watcher / surfaced below */ }
+        serverNotes = 0; pendingNotes = []; updateStatus(); refreshImplState();
+        ecToast('Queued notes discarded — nothing was sent to the AI.');
+        return;
+      }
+      if (!ok) return;
+    }
+
     ecImpl.disabled = true; const orig = ecImpl.textContent; ecImpl.textContent = 'AI working…';
     try {
       if (comments.size) {
@@ -2094,4 +2146,4 @@
      Keep this close in the LAST numbered file. */
 })();
 
-/* build 20260921-172023 */
+/* build 20260921-172554 */
