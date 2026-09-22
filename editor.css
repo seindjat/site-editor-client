@@ -57,7 +57,7 @@ html.ec-style-on * { cursor: crosshair; }
 /* hover hint for non-text actionables (photos, buttons, boxes); text uses .ec-editable:hover */
 .ec-ctx-hover { outline: 2px dashed rgba(247,148,29,0.6) !important; outline-offset: 2px; cursor: pointer; }
 /* the floating action bar that appears next to whatever you click */
-.ec-ctx { position: fixed; z-index: 100002; display: flex; align-items: center; gap: 4px;
+.ec-ctx { position: fixed; z-index: 2147483400; display: flex; align-items: center; gap: 4px;
   background: #1c1c20; border: 1px solid #34343c; border-radius: 11px; padding: 5px;
   box-shadow: 0 12px 32px rgba(0,0,0,0.5); }
 .ec-ctx-btn { background: #2c2c33; color: #fff; border: 0; border-radius: 8px; padding: 7px 12px;
@@ -98,7 +98,7 @@ html.ec-style-on * { cursor: crosshair; }
 .ec-seo-section { font: 700 0.8rem var(--font-body, system-ui, sans-serif); color: var(--charcoal-deep, #2b2b2b); margin: 6px 0 2px; }
 
 /* style controls panel (parent shell) */
-.ec-style-panel { position: fixed; right: 18px; bottom: 18px; z-index: 100001; width: 280px;
+.ec-style-panel { position: fixed; right: 18px; bottom: 18px; z-index: 2147483200; width: 280px;
   background: #fff; border-radius: 14px; box-shadow: 0 18px 50px rgba(0,0,0,0.4); padding: 14px 16px;
   font: 500 0.85rem var(--font-body, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif); color: var(--ink, #1c1c20); }
 .ec-sp-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
@@ -120,7 +120,7 @@ html.ec-style-on * { cursor: crosshair; }
 
 /* conversational refine: toolbar toggle + chat panel */
 .ec-refine-toggle.is-active { background: #6366f1; border-color: #6366f1; }
-.ec-refine-panel { position: fixed; right: 18px; bottom: 18px; z-index: 100001; width: 340px; max-height: 72vh;
+.ec-refine-panel { position: fixed; right: 18px; bottom: 18px; z-index: 2147483200; width: 340px; max-height: 72vh;
   display: flex; flex-direction: column; background: #fff; border-radius: 16px; box-shadow: 0 20px 56px rgba(0,0,0,0.45); overflow: hidden; }
 /* the panel sets display:flex, which (as author CSS) overrides the UA [hidden] rule —
    so .hidden=true wouldn't hide it without this explicit override (X / Discard close) */
@@ -182,9 +182,9 @@ html.ec-style-on * { cursor: crosshair; }
 html.ec-frame section[hidden] { display: block !important; opacity: 0.4; outline: 2px dashed #b45309; outline-offset: -3px; }
 
 /* note editor modal (parent shell) */
-.ec-modal-ov { position: fixed; inset: 0; z-index: 100000; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; padding: 20px; }
+.ec-modal-ov { position: fixed; inset: 0; z-index: 2147483300; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; padding: 20px; }
 /* Owner console embedded panel (Chat + Stats) — the same-origin console in an in-editor iframe. */
-.ec-console-ov { position: fixed; inset: 0; z-index: 2147483600; background: rgba(0,0,0,0.55); display: flex; align-items: center; justify-content: center; padding: 24px; }
+.ec-console-ov { position: fixed; inset: 0; z-index: 2147483300; background: rgba(0,0,0,0.55); display: flex; align-items: center; justify-content: center; padding: 24px; }
 .ec-console-panel { width: min(1120px, 95vw); height: min(820px, 90vh); background: #fff; border-radius: 14px; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 24px 70px rgba(0,0,0,0.45); }
 .ec-console-bar { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; padding: 11px 16px; background: #2E2D30; color: #fff; }
 .ec-console-ttl { font-weight: 500; font-size: 14px; }
@@ -210,7 +210,7 @@ html.ec-frame section[hidden] { display: block !important; opacity: 0.4; outline
 /* Ask/confirm dialogs + toasts — the in-page replacements for confirm()/alert(),
    which a browser silently disables once "prevent additional dialogs" is ticked. */
 .ec-ask-msg { white-space: pre-line; color: var(--ink, #1c1c20); font-size: 0.95rem; line-height: 1.5; }
-.ec-toast { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%); z-index: 100001;
+.ec-toast { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%); z-index: 2147483500;
   max-width: min(90vw, 460px); background: #111; color: #fff;
   font: 600 0.9rem/1.45 var(--font-body, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif);
   padding: 12px 18px; border-radius: 14px; box-shadow: 0 8px 30px rgba(0,0,0,0.4); text-align: center; }
@@ -278,9 +278,17 @@ html.ec-frame section[hidden] { display: block !important; opacity: 0.4; outline
 .ec-more-item:hover { background: #33333c; }
 .ec-more-slot { display: contents; }
 
+/* STACKING ORDER — the editor shell sits above SITE-level fixed chrome (a site
+   may use z-index 2147483000 for its own owner links), so everything meant to
+   open ON TOP of the shell must clear it too. Raising the shell alone left every
+   modal, the click-menu, the panels and toasts painting BEHIND the editor: they
+   opened, and looked like nothing happened.
+     shell 2147483100 < panels 2147483200 < modals/console 2147483300
+           < click-menu 2147483400 < toasts 2147483500
+           < bootstrap's sign-in dialog (2147483647, inline) */
 /* editor shell (parent window) */
 .ec-open { overflow: hidden !important; }
-.ec-shell { position: fixed; inset: 0; z-index: 2147483400; background: #1c1c20; display: flex; flex-direction: column; }
+.ec-shell { position: fixed; inset: 0; z-index: 2147483100; background: #1c1c20; display: flex; flex-direction: column; }
 .ec-toolbar { display: flex; flex-direction: column; gap: 6px; padding: 8px 14px; background: #111; color: #fff; }
 .ec-toolbar-row { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
 .ec-row-tools { border-top: 1px solid rgba(255,255,255,0.08); padding-top: 7px; }
@@ -381,4 +389,4 @@ html.ec-frame section[hidden] { display: block !important; opacity: 0.4; outline
 .ec-hist-restore { background: var(--orange-soft, #fff3e0); color: var(--orange-dark, #d97b06); border: 1px solid var(--orange, #f7941d); border-radius: 7px; padding: 6px 14px; font: 700 0.82rem var(--font-body, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif); cursor: pointer; }
 .ec-hist-restore:hover { background: var(--orange, #f7941d); color: #fff; }
 
-/* build 20260921-172554 */
+/* build 20260921-173318 */
