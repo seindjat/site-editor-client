@@ -86,14 +86,15 @@
   });
 
   /* editor.js reads this global to know what credential to send.
-     The stored blob holds BOTH: `tok` is a signed, expiring SESSION TOKEN minted
-     by /auth — that is what the editor now sends, so the owner's password stops
-     travelling in the body of every save/refine/upload. `pw` is still kept
-     because the same-origin owner console (chat_server's /console) reads this
-     key directly for its single sign-on and only understands the password; when
-     the chat engine learns to accept tokens, `pw` can be dropped entirely.
-     Token first, password as the fallback — which also means an older cached
-     client, or a backend too old to mint tokens, keeps working unchanged. */
+     `tok` is a signed, expiring SESSION TOKEN minted by /auth. THE PASSWORD IS
+     NOT STORED. It used to be, because the same-origin console and knowledge
+     editor read this key for their single sign-on and only understood passwords;
+     the chat engine verifies the editor's tokens now, so there is no longer any
+     reason to keep one. A token expires, is scoped to this site, and can be
+     revoked server-side — a stored password is none of those things.
+     `pw` is still READ if present, so a browser holding a pre-token key keeps
+     working until that key expires, and a backend too old to mint tokens still
+     authenticates. Nothing new writes it. */
   window.getEditKey = function () {
     try {
       var s = JSON.parse(localStorage.getItem(EDIT_KEY) || 'null');
@@ -104,9 +105,11 @@
   };
   function setEditKey(pw, tok) {
     try {
-      localStorage.setItem(EDIT_KEY, JSON.stringify({
-        pw: pw, tok: tok || null, exp: Date.now() + EDIT_TTL,
-      }));
+      /* Keep the password ONLY when the backend gave us no token to use instead
+         (an older server). With a token, the password is deliberately dropped. */
+      var rec = { tok: tok || null, exp: Date.now() + EDIT_TTL };
+      if (!tok) rec.pw = pw;
+      localStorage.setItem(EDIT_KEY, JSON.stringify(rec));
     } catch (e) { /* ignore */ }
   }
   /* Slide the session forward without disturbing the stored password. */
@@ -551,4 +554,4 @@
   }
 })();
 
-/* build 20260921-173318 */
+/* build 20260921-232356 */
