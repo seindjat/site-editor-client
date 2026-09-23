@@ -114,6 +114,21 @@
   const key = getEditKey();
   const dirty = new Map();      // EDIT_SEL index -> innerHTML
   const linkEdits = new Map();  // editable-link index -> {href, text|null}
+  /* What sat at each numbered position when the editor wired the page. Saves apply
+     edits BY POSITION onto a fresh server copy ("the 7th text item"), which is only
+     right if the fresh copy still has the same thing 7th. Today it always does — but
+     one site-script change that injects a <span> above the content, or a save from
+     another tab, would shift every position and put the owner's words on the wrong
+     element, silently. Save compares against this and refuses instead. */
+  let wiredFP = { text: [], links: [], sections: [] };
+  const fpNorm = (t) => String(t == null ? '' : t).replace(/\s+/g, ' ').trim();
+  function pageFingerprint(doc) {
+    return {
+      text: [...doc.querySelectorAll(EDIT_SEL)].map((el) => fpNorm(el.textContent)),
+      links: editableLinks(doc).map((a) => fpNorm(a.getAttribute('href')) + ' | ' + fpNorm(a.textContent)),
+      sections: movableSections(doc).map((s) => (s.id || '') + ' | ' + fpNorm((s.querySelector('h1, h2, h3') || {}).textContent)),
+    };
+  }
   const comments = new Map();   // section index -> {section, device, text}
   let linkMode = false;
   let imgMode = false;
@@ -1287,6 +1302,7 @@
     /* tag sections with their file-order index — a stable key for persisting
        reorder/hide onto a fresh server copy at save time */
     movableSections(doc).forEach((sec, i) => sec.setAttribute('data-ec-idx', i));
+    wiredFP = pageFingerprint(doc);   /* before the owner touches anything — see 00-core */
     /* prefer <br> over a new <div>/<p> on Enter (Chrome/Firefox); Safari ignores
        this, so the keydown handler below is the real cross-browser guarantee */
     try { doc.execCommand('defaultParagraphSeparator', false, 'br'); } catch (e) { /* older browsers */ }
@@ -1393,6 +1409,25 @@
            link edits by editable-link index (both stable vs the static file) */
         const src = await (await fetch(currentPage, { cache: 'no-store' })).text();
         const doc = new DOMParser().parseFromString(src, 'text/html');
+        /* Refuse rather than misplace: every position we are about to write must still
+           hold what the editor saw when it opened the page (see wiredFP in 00-core). */
+        const nowFP = pageFingerprint(doc), moved = [];
+        dirty.forEach((_, i) => { if (nowFP.text[i] !== wiredFP.text[i]) moved.push(wiredFP.text[i]); });
+        linkEdits.forEach((_, i) => { if (nowFP.links[i] !== wiredFP.links[i]) moved.push(wiredFP.links[i]); });
+        if (sectionsDirty && nowFP.sections.join('\n') !== wiredFP.sections.join('\n')) moved.push('the page sections');
+        if (moved.length) {
+          if (window.__ecReport) window.__ecReport('save refused: page drifted since load (' + moved.length + ' position(s)) on ' + currentPage, 'editor.js', 0, '');
+          await ecAlert(
+            'Nothing was saved.\n\nThis page changed after you opened the editor, so your edits no longer line up ' +
+            'with the right text — saving now could put them in the wrong place.\n\n' +
+            'Usually the page was updated from somewhere else: another tab or device, an AI change, or an Undo.\n\n' +
+            'Copy anything you typed, reload the editor, and make the change again.\n\n' +
+            'It no longer found: “' + String(moved[0] || '').slice(0, 80) + '”' +
+            (moved.length > 1 ? ' (and ' + (moved.length - 1) + ' more)' : ''),
+            'Page changed — not saved');
+          ecSave.disabled = false; ecSave.textContent = 'Save changes';
+          return;
+        }
         const targets = doc.querySelectorAll(EDIT_SEL);
         dirty.forEach((html, i) => { if (targets[i]) targets[i].innerHTML = normalizeEditableHTML(html); });
         const links = editableLinks(doc);
@@ -1593,7 +1628,7 @@
     try {
       const r = await fetch(API + 'publish', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: key, files: pendingFiles }),
+        body: JSON.stringify({ password: key, files: pendingFiles, page: currentPage }),
       });
       const msg = await r.text();
       if (!r.ok) throw new Error(msg || r.status);
@@ -2146,4 +2181,4 @@
      Keep this close in the LAST numbered file. */
 })();
 
-/* build 20260921-232356 */
+/* build 20260922-212926 */
