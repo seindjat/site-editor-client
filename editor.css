@@ -134,6 +134,9 @@ html.ec-style-on * { cursor: crosshair; }
 /* shrink to the header bar: everything but the header folds away (90-refine setRfMin) */
 .ec-rf-min { background: none; border: 0; color: #fff; font-size: 0.95rem; line-height: 1; cursor: pointer; padding: 2px 6px; opacity: 0.85; }
 .ec-rf-min:hover { opacity: 1; }
+.ec-rf-home { background: none; border: 0; color: #fff; font-size: 0.95rem; line-height: 1; cursor: pointer; padding: 2px 6px; opacity: 0.85; }
+.ec-rf-home:hover { opacity: 1; }
+.ec-rf-home[hidden] { display: none; }
 .ec-refine-panel.is-min > :not(.ec-rf-head) { display: none !important; }
 .ec-refine-panel.is-min .ec-rf-head { cursor: pointer; }
 /* one line, always: the bar has no room for the running total next to the status badge */
@@ -449,4 +452,4 @@ body.ec-phone-mode .ec-page-sel { max-width: 30vw; }
 .ec-rf-about span { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
 .ec-rf-about-x { flex: 0 0 auto; background: none; border: 0; color: #4338ca; font-size: 0.9rem; cursor: pointer; padding: 2px 4px; }
 
-/* build 20260925-080616 */
+/* build 20260925-081844 */

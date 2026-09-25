@@ -613,8 +613,9 @@
      the owner can pull it aside and watch the page change behind it). With a storeKey
      the spot is kept for this tab, so it survives the reload after Save. Double-click
      the handle to put the panel back where it started. Returns {place} so a panel that
-     was hidden can be re-clamped when it is shown again (the window may have shrunk). */
-  function makeDraggable(panel, handle, storeKey) {
+     was hidden can be re-clamped when it is shown again (the window may have shrunk),
+     and reset() to put it back; onChange(moved) hears whether it is away from home. */
+  function makeDraggable(panel, handle, storeKey, onChange) {
     let tx = 0, ty = 0, sx = 0, sy = 0, startX = 0, startY = 0, dragging = false;
     /* clamp so the draggable HEADER always stays reachable: keep the top edge on-screen
        and at least ~120px of the window horizontally visible */
@@ -627,7 +628,9 @@
       if (r.right < edge) tx += edge - r.right;
       else if (r.left > window.innerWidth - edge) tx += (window.innerWidth - edge) - r.left;
       panel.style.transform = 'translate(' + tx + 'px,' + ty + 'px)';
+      if (onChange) onChange(!!(tx || ty));
     };
+    const reset = () => { tx = 0; ty = 0; place(); save(); };
     const save = () => {
       if (storeKey) try { sessionStorage.setItem(storeKey, JSON.stringify({ x: tx, y: ty })); } catch { /* ignore */ }
     };
@@ -663,9 +666,9 @@
     handle.addEventListener('pointercancel', end);
     handle.addEventListener('dblclick', (e) => {
       if (e.target.closest('button, textarea, input, a')) return;
-      tx = 0; ty = 0; place(); save();
+      reset();
     });
-    return { place };
+    return { place, reset };
   }
   function openNoteModal(label, dev, initial, cb) {
     const ov = document.createElement('div');
@@ -1808,6 +1811,8 @@
         '<span class="ec-rf-grip" aria-hidden="true">⠿</span><strong>🪄 Refine with AI</strong>' +
         '<span class="ec-rf-badge" id="ecRfBadge" hidden></span>' +
         '<span class="ec-rf-cost" id="ecRfCost"></span>' +
+        '<button type="button" class="ec-rf-home" id="ecRfHome" hidden aria-label="Put it back in the corner" ' +
+          'title="Put it back in the corner">↘</button>' +
         '<button type="button" class="ec-rf-min" id="ecRfMin" aria-expanded="true" aria-label="Shrink the chat" ' +
           'title="Shrink to this bar, to watch the page while the AI works">▾</button>' +
         '<button type="button" class="ec-rf-x" id="ecRfClose" aria-label="Close">✕</button></div>' +
@@ -1824,7 +1829,9 @@
     shell.appendChild(p);
     refinePanel = p;
     /* drag it by the header to watch the page change behind it */
-    rfDrag = makeDraggable(p, p.querySelector('.ec-rf-head'), CFG.storePrefix + 'RfPos');
+    const home = p.querySelector('#ecRfHome');   /* shown only once it has been moved */
+    rfDrag = makeDraggable(p, p.querySelector('.ec-rf-head'), CFG.storePrefix + 'RfPos', (moved) => { home.hidden = !moved; });
+    home.addEventListener('click', () => rfDrag.reset());
     const input = p.querySelector('#ecRfInput');
     p.querySelector('#ecRfSend').addEventListener('click', sendRefine);
     input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendRefine(); } });
@@ -2086,10 +2093,12 @@
       '<div class="ec-hist-row' + (isAuto(p) ? ' ec-hist-auto' : '') + (p.where === 'undone' ? ' ec-hist-undone' : '') + '">' +
         '<span class="ec-hist-what"><b>' + escapeHtml(pointLabel(p)) + '</b>' +
         '<em>' + escapeHtml(stampWhen(p.stamp, p.when)) +
-        (p.where === 'undone' ? ' · undone — restore to bring it back' : '') +
+        /* only an Undo's redo point brings the change back; an older undone entry is the
+           site from before its change, like every other entry (and says "same" if live) */
+        (p.where === 'undone' ? (p.redo ? ' · undone — Restore brings this change back' : ' · undone') : '') +
         (p.same ? ' · same as your site now' : '') + '</em></span>' +
         (p.same ? '' : '<button type="button" class="ec-hist-restore" data-stamp="' + p.stamp + '" data-label="' +
-          escapeHtml(pointLabel(p)) + '" data-auto="' + (isAuto(p) ? '1' : '') + '">Restore</button>') +
+          escapeHtml(pointLabel(p)) + '" data-auto="' + (isAuto(p) ? '1' : '') + '" data-redo="' + (p.redo ? '1' : '') + '">Restore</button>') +
       '</div>').join('') || '<p class="ec-modal-sub">No restore points yet.</p>';
     ov.innerHTML =
       '<div class="ec-modal">' +
@@ -2110,9 +2119,11 @@
       const age = stampAgeDays(b.dataset.stamp);
       const warn = (age != null && age > 1) ? ('\n\n⚠ That version is about ' + Math.round(age) + ' day(s) old — newer work will be rolled back.') : '';
       const when = stampWhen(b.dataset.stamp);
-      const lead = b.dataset.auto
-        ? 'The site goes back to how it was at ' + when + '.'
-        : 'The site goes back to how it was just before “' + b.dataset.label + '” (' + when + ').';
+      const lead = b.dataset.redo
+        ? '“' + b.dataset.label + '” comes back: the site goes back to how it was when you undid it (' + when + ').'
+        : b.dataset.auto
+          ? 'The site goes back to how it was at ' + when + '.'
+          : 'The site goes back to how it was just before “' + b.dataset.label + '” (' + when + ').';
       if (!(await ecConfirm(lead + ' Everything changed after that is undone — and you can undo this too.' + warn,
                             'Roll the page back?', 'Roll back', age != null && age > 1))) return;
       b.disabled = true; b.textContent = 'Restoring…';
@@ -2418,4 +2429,4 @@
      Keep this close in the LAST numbered file. */
 })();
 
-/* build 20260925-080616 */
+/* build 20260925-081844 */
