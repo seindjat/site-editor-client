@@ -68,22 +68,31 @@
      uses it in preference to its own EDIT_AI_MODEL. So this list — not the
      server config — is what actually decides which model runs. Bumping the
      server default alone does nothing; keep the two in step. */
-  const AI_MODEL_DEFAULT = 'claude-opus-5';
+  /* 2026-09-25 bake-off on real edits across bath, kitchen and TB: GPT-6 Luna got all
+     10 right at ~$0.0005 per pointed edit; Opus 5 cost ~60x that for the same results.
+     If OpenRouter fails, the server has Claude Sonnet 5 answer instead. */
+  const AI_MODEL_DEFAULT = 'openai/gpt-6-luna';
   const AI_MODELS = (window.EDITOR_CONFIG && window.EDITOR_CONFIG.aiModels) || [
-    { id: AI_MODEL_DEFAULT, label: 'Claude Opus 5 — most capable (default)' },
-    { id: 'claude-sonnet-5', label: 'Claude Sonnet 5 — cheaper, still strong' },
-    { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5 — cheapest' },
-    { id: 'openai/gpt-4o-mini', label: 'GPT-4o mini — cheap (OpenRouter)' },
-    { id: 'deepseek/deepseek-chat', label: 'DeepSeek Chat — very cheap (OpenRouter)' },
+    { id: AI_MODEL_DEFAULT, label: 'GPT-6 Luna — fast, a fraction of a cent (default)' },
+    { id: 'claude-sonnet-5', label: 'Claude Sonnet 5 — strong, about 20× the cost' },
+    { id: 'claude-opus-5', label: 'Claude Opus 5 — most capable, about 60× the cost' },
+    { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5 — cheapest Claude' },
   ];
   function getAiModel() {
     try {
       var stored = localStorage.getItem(AI_MODEL_KEY);
       /* A model the owner picked BEFORE this list was refreshed would pin them to
          a previous generation forever. Retire the ids we no longer offer. */
-      var RETIRED = ['claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6',
-                     'claude-sonnet-4-6', 'anthropic/claude-3.5-haiku', 'google/gemini-flash-1.5'];
+      var RETIRED = ['claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-4-6',
+                     'anthropic/claude-3.5-haiku', 'google/gemini-flash-1.5', 'openai/gpt-4o-mini', 'deepseek/deepseek-chat'];
       if (stored && RETIRED.indexOf(stored) !== -1) { localStorage.removeItem(AI_MODEL_KEY); stored = null; }
+      /* Opus 5 WAS the default until 2026-09-25, and the picker saves whatever it shows —
+         so a stored Opus is usually that old default, not a choice. Drop it once; picking
+         Opus again afterwards sticks. */
+      if (!localStorage.getItem(AI_MODEL_KEY + 'Rev2')) {
+        if (stored === 'claude-opus-5') { localStorage.removeItem(AI_MODEL_KEY); stored = null; }
+        localStorage.setItem(AI_MODEL_KEY + 'Rev2', '1');
+      }
       return stored || AI_MODEL_DEFAULT;
     } catch { return AI_MODEL_DEFAULT; }
   }
@@ -1686,8 +1695,11 @@
     const cls = (e) => clip(String(e.className || '').split(/\s+/).filter((c) => c && !/^ec-/.test(c)).join(' '), 80);
     const sec = el.closest('body > section, body > header, body > footer, header.nav, footer.footer');
     const specific = (el !== sec && el.tagName !== 'BODY' && el.tagName !== 'HTML') ? el : null;
+    /* n = its position among the page's top-level blocks: the server sends the AI just
+       this block, and n still finds it after an earlier turn rewrote its heading */
+    const tops = [...el.ownerDocument.querySelectorAll('body > section, body > header, body > footer')];
     const section = sec ? { tag: sec.tagName.toLowerCase(), id: sec.id || '', cls: cls(sec),
-      heading: clip((sec.querySelector('h1, h2, h3') || {}).textContent, 90) } : null;
+      heading: clip((sec.querySelector('h1, h2, h3') || {}).textContent, 90), n: tops.indexOf(sec) } : null;
     const element = specific ? { tag: specific.tagName.toLowerCase(), text: clip(specific.textContent, 90), cls: cls(specific),
       src: specific.getAttribute('src') || '', href: specific.getAttribute('href') || '' } : null;
     /* the section's visible heading reads better than its id ("options") */
@@ -1815,7 +1827,7 @@
     refinePanel.querySelector('#ecRfMsgs').innerHTML = '';
     refinePanel.querySelector('#ecRfCost').textContent = '';
     refinePanel.querySelector('#ecRfPublish').disabled = true;
-    addRefineMsg('ai', 'Hi! Tap any part of the page to point at it, then tell me what to change — e.g. “make this shorter”, then “a bit darker”. I’ll show each change right here. Nothing goes live until you press 💾 Save changes.');
+    addRefineMsg('ai', 'Hi! Tap any part of the page to point at it (that’s faster and much cheaper than asking about the whole page), then tell me what to change — e.g. “make this shorter”, then “a bit darker”. I’ll show each change right here. Nothing goes live until you press 💾 Save changes.');
     setRfPointer(null);
     refinePanel.hidden = false;
     updateRefineScope();
@@ -2141,12 +2153,12 @@
     ov.innerHTML =
       '<div class="ec-modal ec-ai-modal">' +
         '<h3>AI model</h3>' +
-        '<p class="ec-modal-sub">Which model the AI editor (Refine + Apply notes) uses. The default is most reliable; cheaper models suit small tweaks.</p>' +
+        '<p class="ec-modal-sub">Which model the AI editor uses. The default got every test edit right for a fraction of a cent; if it ever fails to answer, Claude Sonnet 5 steps in automatically.</p>' +
         '<select class="ec-ai-select" id="ecAiSel">' +
           AI_MODELS.map((m) => `<option value="${m.id}"${m.id === cur && !isCustom ? ' selected' : ''}>${m.label}</option>`).join('') +
           `<option value="__custom"${isCustom ? ' selected' : ''}>Custom — any OpenRouter model id…</option>` +
         '</select>' +
-        `<input type="text" class="ec-link-input ec-ai-custom" id="ecAiCustom" placeholder="e.g. openai/gpt-4.1-mini  (from openrouter.ai/models)" value="${isCustom ? cur : ''}"${isCustom ? '' : ' style="display:none"'}>` +
+        `<input type="text" class="ec-link-input ec-ai-custom" id="ecAiCustom" placeholder="e.g. deepseek/deepseek-v4-pro  (from openrouter.ai/models)" value="${isCustom ? cur : ''}"${isCustom ? '' : ' style="display:none"'}>` +
         '<hr class="ec-ai-hr">' +
         '<p class="ec-modal-sub">OpenRouter API key <b id="ecKeyStatus" class="ec-key-status"></b></p>' +
         '<p class="ec-modal-hint">Only needed for non-Claude models. Get one at openrouter.ai → Keys. Stored on your server; never shown back here.</p>' +
@@ -2334,4 +2346,4 @@
      Keep this close in the LAST numbered file. */
 })();
 
-/* build 20260924-225743 */
+/* build 20260924-233934 */
