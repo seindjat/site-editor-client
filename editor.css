@@ -425,5 +425,9 @@ body.ec-phone-mode .ec-modal-ov { padding: 10px; }
 body.ec-phone-mode .ec-modal { padding: 18px; }
 body.ec-phone-mode .ec-more-menu { position: fixed; left: 8px; right: 8px; width: auto; }
 body.ec-phone-mode .ec-frame-el { height: 100% !important; }   /* follow the stage, whatever sits above it */
+/* toolbar buttons never wrap on a phone — the page picker gives way instead
+   (on metisconst the Save icon and word were stacking on two lines) */
+body.ec-phone-mode .ec-toolbar .ec-btn { white-space: nowrap; flex: 0 0 auto; }
+body.ec-phone-mode .ec-page-sel { max-width: 30vw; }
 
-/* build 20260924-221718 */
+/* build 20260924-222739 */
