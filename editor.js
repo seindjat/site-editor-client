@@ -2125,7 +2125,8 @@
           ? 'The site goes back to how it was at ' + when + '.'
           : 'The site goes back to how it was just before “' + b.dataset.label + '” (' + when + ').';
       if (!(await ecConfirm(lead + ' Everything changed after that is undone — and you can undo this too.' + warn,
-                            'Roll the page back?', 'Roll back', age != null && age > 1))) return;
+                            b.dataset.redo ? 'Bring this change back?' : 'Roll the page back?',
+                            b.dataset.redo ? 'Bring it back' : 'Roll back', age != null && age > 1))) return;
       b.disabled = true; b.textContent = 'Restoring…';
       try {
         const r = await fetch(API + 'restore-to', {
@@ -2429,4 +2430,4 @@
      Keep this close in the LAST numbered file. */
 })();
 
-/* build 20260925-081844 */
+/* build 20260925-082239 */
