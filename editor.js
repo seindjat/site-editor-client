@@ -387,6 +387,10 @@
     if (!moreMenu) return;
     const open = moreMenu.hidden;
     moreMenu.hidden = !open;
+    /* On a phone, More is not the rightmost button (Undo, Save, Exit follow it), so a menu
+       right-aligned to it ran off the LEFT edge. Pin it under the toolbar, screen-wide. */
+    if (open && isPhone()) moreMenu.style.top = (shell.querySelector('.ec-toolbar').getBoundingClientRect().bottom + 4) + 'px';
+    else moreMenu.style.top = '';
     moreBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
   }
   if (moreBtn) {
@@ -2205,7 +2209,11 @@
         : '👋 <b>Welcome!</b> Click any text to edit it — or click a photo, button or section and a little menu shows what you can change. Prefer to just ask? Use <b>🪄 Refine</b>. Press <b>💾 Save</b> when done.') + '</span>' +
         '<button type="button" class="ec-welcome-x" id="ecWelcomeOk">Got it</button>';
       shell.insertBefore(tip, shell.querySelector('.ec-stage'));
-      tip.querySelector('#ecWelcomeOk').addEventListener('click', () => { tip.remove(); try { localStorage.setItem(CFG.storePrefix + 'Welcomed', '1'); } catch { /* ignore */ } });
+      tip.querySelector('#ecWelcomeOk').addEventListener('click', () => {
+        tip.remove();
+        applyDevice(currentDevice);   /* give the page the space the tip used (it left a dead band) */
+        try { localStorage.setItem(CFG.storePrefix + 'Welcomed', '1'); } catch { /* ignore */ }
+      });
     }
   } catch { /* private mode */ }
   /* ---------- Owner console panel (Chat + Stats), embedded in-editor ---------- */
@@ -2254,4 +2262,4 @@
      Keep this close in the LAST numbered file. */
 })();
 
-/* build 20260924-221244 */
+/* build 20260924-221718 */

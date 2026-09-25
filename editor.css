@@ -423,5 +423,7 @@ body.ec-phone-mode .ec-ctx-btn { padding: 10px 12px; }
 body.ec-phone-mode .ec-refine-panel, body.ec-phone-mode .ec-style-panel { left: 8px; right: 8px; bottom: 8px; width: auto; max-height: 62vh; }
 body.ec-phone-mode .ec-modal-ov { padding: 10px; }
 body.ec-phone-mode .ec-modal { padding: 18px; }
+body.ec-phone-mode .ec-more-menu { position: fixed; left: 8px; right: 8px; width: auto; }
+body.ec-phone-mode .ec-frame-el { height: 100% !important; }   /* follow the stage, whatever sits above it */
 
-/* build 20260924-221244 */
+/* build 20260924-221718 */
