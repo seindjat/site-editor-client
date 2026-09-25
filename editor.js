@@ -155,6 +155,19 @@
   let refineDirty = false;      // a refine turn has applied a change (enables Publish)
 
   const DEVICES = CFG.devices;
+  /* Phone. The editor was desktop-only: on a 375px screen the toolbar took three rows,
+     the welcome tip squeezed into one-word columns, and the page rendered 1280px wide
+     and cropped, so you could not see what you were editing. On a phone we edit the
+     phone layout, full width, with a one-row toolbar. Landscape phones are wider than
+     700px, hence the second test (a touch screen that is short). */
+  const PHONE_MQ = window.matchMedia ? window.matchMedia('(max-width: 700px), (pointer: coarse) and (max-height: 520px)') : { matches: false };
+  const isPhone = () => !!PHONE_MQ.matches;
+  const deviceForWidth = (w) => Object.keys(DEVICES).reduce((a, k) =>
+    (Math.abs(DEVICES[k].w - w) < Math.abs(DEVICES[a].w - w) ? k : a));
+  if (isPhone()) currentDevice = deviceForWidth(window.innerWidth);
+  /* labels that shrink on a phone; the save/undo code restores them with these */
+  const SAVE_LABEL = '💾 Save<span class="ec-lbl"> changes</span>';
+  const UNDO_LABEL = '↩<span class="ec-lbl"> Undo</span>';
   const PAGES = CFG.pages;
 
   /* Anchors the owner may retarget — every <a> EXCEPT those inside dynamic chrome
@@ -248,6 +261,9 @@
           '<div class="ec-more-wrap">' +
             '<button type="button" class="ec-btn ec-more-btn" id="ecMore" aria-haspopup="true" aria-expanded="false" title="More tools">More ▾</button>' +
             '<div class="ec-more-menu" id="ecMoreMenu" hidden>' +
+              '<div class="ec-more-grp ec-phone-only">Edit</div>' +
+              '<button type="button" class="ec-more-item ec-phone-only" id="ecRefineM">🪄 Refine with AI</button>' +
+              '<button type="button" class="ec-more-item ec-phone-only" id="ecHistoryM">🕘 History</button>' +
               '<div class="ec-more-grp">Page</div>' +
               '<button type="button" class="ec-more-item" id="ecSeo" title="Edit the page title, Google search description, and social-share preview text">🔎 Search &amp; social (SEO)</button>' +
               '<div class="ec-more-slot" id="ecMoreTools"></div>' +
@@ -268,9 +284,9 @@
             '</div>' +
           '</div>' +
           '<span class="ec-vsep"></span>' +
-          '<button type="button" class="ec-btn ec-undo" id="ecUndo" title="Undo the last change">↩ Undo</button>' +
+          '<button type="button" class="ec-btn ec-undo" id="ecUndo" title="Undo the last change">' + UNDO_LABEL + '</button>' +
           '<button type="button" class="ec-btn ec-history" id="ecHistory" title="Change history & restore points">🕘 History</button>' +
-          '<button type="button" class="ec-btn ec-save" id="ecSave">💾 Save changes</button>' +
+          '<button type="button" class="ec-btn ec-save" id="ecSave">' + SAVE_LABEL + '</button>' +
           '<button type="button" class="ec-btn ec-exit" id="ecExit">Exit</button>' +
           '<span class="ec-status"></span>' +
         '</div>' +
@@ -285,6 +301,7 @@
     '</div>' +
     '<div class="ec-stage"><iframe class="ec-frame-el" id="ecFrame"></iframe></div>';
   document.body.appendChild(shell);
+  document.body.classList.toggle('ec-phone-mode', isPhone());
 
   const stage = shell.querySelector('.ec-stage');
   const frame = shell.querySelector('#ecFrame');
@@ -292,6 +309,11 @@
   const status = shell.querySelector('.ec-status');
   const ecSave = shell.querySelector('#ecSave');
   const ecRefine = shell.querySelector('#ecRefine');
+  shell.querySelector('#ecRefineM').addEventListener('click', () => {
+    if (ecRefine.disabled) { ecToast('The AI is not available on this page.'); return; }
+    ecRefine.click();
+  });
+  shell.querySelector('#ecHistoryM').addEventListener('click', () => shell.querySelector('#ecHistory').click());
   const ecNotesGroup = shell.querySelector('#ecNotesGroup');
   const ecLink = shell.querySelector('#ecLink');
   const ecImg = shell.querySelector('#ecImg');
@@ -409,9 +431,12 @@
   refreshCostEstimate();
 
   function applyDevice(k) {
+    const phone = isPhone();
+    document.body.classList.toggle('ec-phone-mode', phone);
+    if (phone) k = deviceForWidth(window.innerWidth);   /* the phone IS the device */
     currentDevice = k;
-    frame.style.width = DEVICES[k].w + 'px';
-    frame.style.height = (stage.clientHeight - 40) + 'px';
+    frame.style.width = phone ? '100%' : DEVICES[k].w + 'px';
+    frame.style.height = (stage.clientHeight - (phone ? 0 : 40)) + 'px';
     shell.querySelectorAll('.ec-dev').forEach((b) => b.classList.toggle('is-active', b.dataset.dev === k));
     dim.textContent = DEVICES[k].w + ' px wide';
     if (refining) updateRefineScope();   /* keep the Refine scope label in step with the view */
@@ -1425,7 +1450,7 @@
             'It no longer found: “' + String(moved[0] || '').slice(0, 80) + '”' +
             (moved.length > 1 ? ' (and ' + (moved.length - 1) + ' more)' : ''),
             'Page changed — not saved');
-          ecSave.disabled = false; ecSave.textContent = 'Save changes';
+          ecSave.disabled = false; ecSave.innerHTML = SAVE_LABEL;
           return;
         }
         const targets = doc.querySelectorAll(EDIT_SEL);
@@ -1493,7 +1518,7 @@
       location.reload();
     } catch (err) {
       await ecAlert('Save failed (' + err.message + ')', 'Save failed');
-      ecSave.disabled = false; ecSave.textContent = 'Save changes';
+      ecSave.disabled = false; ecSave.innerHTML = SAVE_LABEL;
     }
   });
 
@@ -1852,6 +1877,34 @@
     } catch (e) { return fallback || stamp || ''; }
   }
 
+  /* What each restore point was taken for. The server records reason/page/detail when
+     it snapshots; before that, every entry was a bare time and a daily copy taken
+     whether or not anything changed looked like work the owner never did. A restore
+     point is the site just BEFORE the change it is named after. */
+  function pageLabel(file) {
+    const p = (CFG.pages || []).find((x) => (x.file || x) === file);
+    return p && p.label ? p.label : String(file || '').replace(/\.html$/, '');
+  }
+  function pointLabel(p) {
+    const on = p.page ? ' — ' + pageLabel(p.page) : '';
+    const what = p.detail ? ' (' + p.detail + ')' : '';
+    switch (p.reason) {
+      case 'edit': return 'Text edit' + on;
+      case 'sections': return 'Sections shown, hidden or moved' + on;
+      case 'photo': return 'Photo replaced' + what;
+      case 'photo-description': return 'Photo description changed' + what;
+      case 'seo': return 'Search & social (SEO) change' + on;
+      case 'ai-notes': case 'ai-refine': return 'AI change' + on;
+      case 'ai-image': return 'AI image' + what;
+      case 'restore': return 'Rolled back to an earlier version';
+      case 'manual': return 'Saved restore point';
+      case 'daily': return 'Automatic daily backup';
+      case 'outside': return 'Changed outside the editor' + (p.detail ? ': ' + p.detail : '');
+      default: return 'Earlier version';
+    }
+  }
+  const isAuto = (p) => p.reason === 'daily';
+
   /* ---------- History & restore points ---------- */
   shell.querySelector('#ecHistory').addEventListener('click', async () => {
     if (previewing) { ecToast('Discard the current preview first.'); return; }
@@ -1867,26 +1920,40 @@
 
     const ov = document.createElement('div');
     ov.className = 'ec-modal-ov';
-    const rows = (data.points || []).map((p) =>
-      '<div class="ec-hist-row"><span class="ec-hist-when">' + escapeHtml(stampWhen(p.stamp, p.when)) +
-      (p.where === 'undone' ? ' <em>(undone)</em>' : '') + '</span>' +
-      '<button type="button" class="ec-hist-restore" data-stamp="' + p.stamp + '">Restore</button></div>').join('')
-      || '<p class="ec-modal-sub">No restore points yet.</p>';
+    const pts = data.points || [];
+    const nAuto = pts.filter(isAuto).length;
+    const rows = pts.map((p) =>
+      '<div class="ec-hist-row' + (isAuto(p) ? ' ec-hist-auto' : '') + (p.where === 'undone' ? ' ec-hist-undone' : '') + '">' +
+        '<span class="ec-hist-what"><b>' + escapeHtml(pointLabel(p)) + '</b>' +
+        '<em>' + escapeHtml(stampWhen(p.stamp, p.when)) +
+        (p.where === 'undone' ? ' · undone — restore to bring it back' : '') +
+        (p.same ? ' · same as your site now' : '') + '</em></span>' +
+        (p.same ? '' : '<button type="button" class="ec-hist-restore" data-stamp="' + p.stamp + '" data-label="' +
+          escapeHtml(pointLabel(p)) + '" data-auto="' + (isAuto(p) ? '1' : '') + '">Restore</button>') +
+      '</div>').join('') || '<p class="ec-modal-sub">No restore points yet.</p>';
     ov.innerHTML =
       '<div class="ec-modal">' +
         '<h3>Change history</h3>' +
-        '<p class="ec-modal-sub">AI spend: $' + (data.spendUsd || 0).toFixed(2) + ' over ' + (data.runs || 0) + ' AI edit' + (data.runs === 1 ? '' : 's') + '. Pick a point to roll the page back to it.</p>' +
-        '<div class="ec-hist-list">' + rows + '</div>' +
+        '<p class="ec-modal-sub">Each entry is a change to your site. <b>Restore</b> puts the site back the way it was just before it — and you can undo that too.</p>' +
+        (nAuto ? '<label class="ec-hist-toggle"><input type="checkbox" id="ecHistAuto"> Show automatic daily backups (' + nAuto + ')</label>' : '') +
+        '<div class="ec-hist-list ec-hist-hide-auto" id="ecHistList">' + rows + '</div>' +
+        '<p class="ec-modal-sub ec-hist-spend">AI spend so far: $' + (data.spendUsd || 0).toFixed(2) + ' over ' + (data.runs || 0) + ' AI edit' + (data.runs === 1 ? '' : 's') + '.</p>' +
         '<div class="ec-modal-row"><span></span><div><button type="button" class="ec-modal-cancel" id="ecHistClose">Close</button></div></div>' +
       '</div>';
     document.body.appendChild(ov);
     const close = () => ov.remove();
     ov.querySelector('#ecHistClose').addEventListener('click', close);
+    const tog = ov.querySelector('#ecHistAuto');
+    if (tog) tog.addEventListener('change', () => ov.querySelector('#ecHistList').classList.toggle('ec-hist-hide-auto', !tog.checked));
     ov.addEventListener('click', (e) => { if (e.target === ov) close(); });
     ov.querySelectorAll('.ec-hist-restore').forEach((b) => b.addEventListener('click', async () => {
       const age = stampAgeDays(b.dataset.stamp);
       const warn = (age != null && age > 1) ? ('\n\n⚠ That version is about ' + Math.round(age) + ' day(s) old — newer work will be rolled back.') : '';
-      if (!(await ecConfirm('The page goes back to this point. You can undo this too.' + warn,
+      const when = stampWhen(b.dataset.stamp);
+      const lead = b.dataset.auto
+        ? 'The site goes back to how it was at ' + when + '.'
+        : 'The site goes back to how it was just before “' + b.dataset.label + '” (' + when + ').';
+      if (!(await ecConfirm(lead + ' Everything changed after that is undone — and you can undo this too.' + warn,
                             'Roll the page back?', 'Roll back', age != null && age > 1))) return;
       b.disabled = true; b.textContent = 'Restoring…';
       try {
@@ -1910,7 +1977,7 @@
     try {
       const hr = await fetch(API + 'history', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: key }) });
       if (hr.ok) {
-        const cur = ((await hr.json()).points || []).filter((p) => p.where !== 'undone');
+        const cur = ((await hr.json()).points || []).filter((p) => p.where !== 'undone' && !p.same);
         cur.sort((a, b) => (a.stamp < b.stamp ? 1 : -1));   /* newest first */
         target = cur[0] || null;
       }
@@ -1922,7 +1989,9 @@
       big = (age != null && age > 1);
       msg = big
         ? ('⚠ This rolls the page back to ' + stampWhen(target.stamp, target.when) + ' — about ' + Math.round(age) + ' day(s) ago, which may discard newer work.')
-        : ('This restores the version from ' + stampWhen(target.stamp, target.when) + '.');
+        : (isAuto(target)
+            ? 'This takes the site back to the automatic backup from ' + stampWhen(target.stamp, target.when) + '.'
+            : 'This undoes: ' + pointLabel(target) + ' (' + stampWhen(target.stamp, target.when) + ').');
     }
     if (!(await ecConfirm(msg, big ? 'Undo — big jump back' : 'Undo the last change?', 'Undo', big))) return;
     btn.disabled = true; btn.textContent = 'Reverting…';
@@ -1931,14 +2000,14 @@
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password: key }),
       });
-      if (r.status === 400) { await ecAlert((await r.text()) || 'Nothing to undo yet.', 'Cannot undo'); btn.disabled = false; btn.textContent = '↩ Undo'; return; }   /* may be "Undo blocked: predates required parts…" */
+      if (r.status === 400) { await ecAlert((await r.text()) || 'Nothing to undo yet.', 'Cannot undo'); btn.disabled = false; btn.innerHTML = UNDO_LABEL; return; }   /* may be "Undo blocked: predates required parts…" */
       if (!r.ok) throw new Error(await r.text() || r.status);
       await ecAlert('The page is back' + (target ? ' to the version from ' + stampWhen(target.stamp, target.when) : '') + '.', 'Reverted ✓');
       saveScroll();
       location.reload();
     } catch (err) {
       await ecAlert('Undo failed (' + err.message + ')', 'Undo failed');
-      btn.disabled = false; btn.textContent = '↩ Undo';
+      btn.disabled = false; btn.innerHTML = UNDO_LABEL;
     }
   });
 
@@ -2129,7 +2198,11 @@
     if (!localStorage.getItem(CFG.storePrefix + 'Welcomed')) {
       const tip = document.createElement('div');
       tip.className = 'ec-welcome';
-      tip.innerHTML = '👋 <b>Welcome!</b> Click any text to edit it — or click a photo, button or section and a little menu shows what you can change. Prefer to just ask? Use <b>🪄 Refine</b>. Press <b>💾 Save</b> when done.' +
+      /* one wrapped span, so the message is ONE flex item — as loose text + <b> nodes
+         each became its own column, and on a phone that meant one word per line */
+      tip.innerHTML = '<span class="ec-welcome-msg">' + (isPhone()
+        ? '👋 <b>Welcome!</b> Tap any text to edit it. Tap a photo or section for more options. Press <b>💾 Save</b> when done.'
+        : '👋 <b>Welcome!</b> Click any text to edit it — or click a photo, button or section and a little menu shows what you can change. Prefer to just ask? Use <b>🪄 Refine</b>. Press <b>💾 Save</b> when done.') + '</span>' +
         '<button type="button" class="ec-welcome-x" id="ecWelcomeOk">Got it</button>';
       shell.insertBefore(tip, shell.querySelector('.ec-stage'));
       tip.querySelector('#ecWelcomeOk').addEventListener('click', () => { tip.remove(); try { localStorage.setItem(CFG.storePrefix + 'Welcomed', '1'); } catch { /* ignore */ } });
@@ -2181,4 +2254,4 @@
      Keep this close in the LAST numbered file. */
 })();
 
-/* build 20260922-212926 */
+/* build 20260924-221244 */
