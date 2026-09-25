@@ -1713,6 +1713,7 @@
 
   /* ---------- Conversational refine (chat with the AI) ---------- */
   let refinePanel = null, rfDrag = null;
+  let rfMin = false;      /* shrunk to its header bar, so the owner can watch the page change */
   let rfPointer = null;   /* what the owner last pointed at: {label, element, section} */
 
   /* Describe what was tapped so the AI can find it in the file: the element itself when
@@ -1747,6 +1748,7 @@
   function setRfPointer(p) {
     rfPointer = p;
     if (!refinePanel) return;
+    if (p && rfMin) setRfMin(false);   /* pointing at something means "I'm about to type" */
     const box = refinePanel.querySelector('#ecRfAbout');
     box.hidden = !p;
     if (p) box.querySelector('#ecRfAboutTxt').textContent = '📍 About: ' + p.label;
@@ -1777,6 +1779,26 @@
     setRfPointer(p);
     refinePanel.querySelector('#ecRfInput').focus();
   }
+  /* Shrink the chat to its header bar (and back). The panel sits on its bottom edge, so
+     it folds down into the bar like a chat widget, and unfolds to exactly where it was.
+     While shrunk, the bar says when the AI is working and when a reply has arrived. */
+  function setRfMin(on) {
+    rfMin = !!on;
+    if (!refinePanel) return;
+    refinePanel.classList.toggle('is-min', rfMin);
+    const b = refinePanel.querySelector('#ecRfMin'), badge = refinePanel.querySelector('#ecRfBadge');
+    b.textContent = rfMin ? '▴' : '▾';
+    b.title = rfMin ? 'Show the chat again' : 'Shrink to this bar, to watch the page while the AI works';
+    b.setAttribute('aria-label', rfMin ? 'Show the chat' : 'Shrink the chat');
+    b.setAttribute('aria-expanded', rfMin ? 'false' : 'true');
+    if (rfMin) {
+      const working = !!refinePanel.querySelector('.ec-rf-thinking');
+      badge.textContent = 'working…'; badge.hidden = !working;
+    } else {
+      badge.hidden = true;
+      const list = refinePanel.querySelector('#ecRfMsgs'); list.scrollTop = list.scrollHeight;
+    }
+  }
   function buildRefinePanel() {
     if (refinePanel) return refinePanel;
     const p = document.createElement('div');
@@ -1784,7 +1806,10 @@
     p.innerHTML =
       '<div class="ec-rf-head" title="Drag to move · double-click to put it back">' +
         '<span class="ec-rf-grip" aria-hidden="true">⠿</span><strong>🪄 Refine with AI</strong>' +
+        '<span class="ec-rf-badge" id="ecRfBadge" hidden></span>' +
         '<span class="ec-rf-cost" id="ecRfCost"></span>' +
+        '<button type="button" class="ec-rf-min" id="ecRfMin" aria-expanded="true" aria-label="Shrink the chat" ' +
+          'title="Shrink to this bar, to watch the page while the AI works">▾</button>' +
         '<button type="button" class="ec-rf-x" id="ecRfClose" aria-label="Close">✕</button></div>' +
       '<div class="ec-rf-msgs" id="ecRfMsgs"></div>' +
       '<div class="ec-rf-scope" id="ecRfScope"></div>' +
@@ -1804,6 +1829,16 @@
     p.querySelector('#ecRfSend').addEventListener('click', sendRefine);
     input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendRefine(); } });
     p.querySelector('#ecRfClose').addEventListener('click', () => closeRefineAsk());
+    p.querySelector('#ecRfMin').addEventListener('click', () => setRfMin(!rfMin));
+    /* shrunk: a tap on the bar (not a drag of it) opens the chat again */
+    const head = p.querySelector('.ec-rf-head');
+    let downAt = null;
+    head.addEventListener('pointerdown', (e) => { downAt = [e.clientX, e.clientY]; });
+    head.addEventListener('click', (e) => {
+      if (!rfMin || e.target.closest('button')) return;
+      if (downAt && Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 5) return;   /* that was a drag */
+      setRfMin(false);
+    });
     p.querySelector('#ecRfDiscard').addEventListener('click', () => closeRefineAsk());
     p.querySelector('#ecRfPublish').addEventListener('click', publishRefine);
     p.querySelector('#ecRfAboutX').addEventListener('click', () => {
@@ -1818,6 +1853,11 @@
     m.textContent = text;
     const list = refinePanel.querySelector('#ecRfMsgs');
     list.appendChild(m); list.scrollTop = list.scrollHeight;
+    if (rfMin && role === 'ai') {        /* shrunk: say so on the bar */
+      const badge = refinePanel.querySelector('#ecRfBadge');
+      badge.textContent = text === '…' ? 'working…' : '● reply';
+      badge.hidden = false;
+    }
     return m;
   }
   function fmtCost(c) {
@@ -1854,6 +1894,7 @@
     ecSave.style.display = 'none';
     ecRefine.classList.add('is-active'); ecRefine.textContent = '🪄 Refine: ON';
     buildRefinePanel();
+    setRfMin(false);
     refinePanel.querySelector('#ecRfMsgs').innerHTML = '';
     refinePanel.querySelector('#ecRfCost').textContent = '';
     refinePanel.querySelector('#ecRfPublish').disabled = true;
@@ -2377,4 +2418,4 @@
      Keep this close in the LAST numbered file. */
 })();
 
-/* build 20260925-075710 */
+/* build 20260925-080616 */
