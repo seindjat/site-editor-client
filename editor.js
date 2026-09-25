@@ -351,7 +351,7 @@
        config) — kitchen's privacy page is. Offering Refine/Apply notes there
        would just fail at the server, so hide them and say why on hover. */
     ecRefine.style.display = pageAiEditable ? '' : 'none';
-    ecNotesGroup.style.display = (total > 0 && pageAiEditable) ? '' : 'none';
+    ecNotesGroup.style.display = 'none';   /* notes retired 2026-09-25 — "Ask AI about this" replaces them */
     ecImpl.disabled = total === 0 || previewing || !pageAiEditable;
     ecImpl.title = 'Send your notes to the AI to apply them all at once';
     updateCost();
@@ -361,12 +361,6 @@
     if (linkEdits.size) bits.push(`${linkEdits.size} link${linkEdits.size !== 1 ? 's' : ''}`);
     if (styleDirty) bits.push(`${styleEdits.size} styled`);
     if (sectionsDirty) bits.push('layout changed');
-    /* Count queued notes as well as this session's. Saying "0 notes" while the
-       Apply-notes button was lit is how a note from months earlier got applied
-       on a click, for real money, with nothing on screen to explain it. */
-    const totalNotes = comments.size + serverNotes;
-    bits.push(`${totalNotes} note${totalNotes !== 1 ? 's' : ''}` +
-              (serverNotes && !comments.size ? ' queued' : ''));
     status.textContent = bits.join(' · ');
     /* Save is only active when there's a NEW change this session (styleDirty, not the
        count of loaded-from-save overrides) */
@@ -1264,6 +1258,11 @@
   }
   function ctxActionsFor(el) {
     const acts = [];
+    /* Point at it and ask. Replaces "Add note", which queued text for a later "Apply
+       notes" run: notes sat unapplied for months, and the change arrived as one batch
+       you could only take or leave whole. This opens Refine already pointing at what
+       you tapped — the AI is told exactly which element and section you mean. */
+    if (pageAiEditable) acts.push({ label: '💬 Ask AI about this', fn: () => askAiAbout(el) });
     const slot = el.tagName === 'IMG' ? imgSlot(el) : null;
     if (slot) {
       if (HERO_SLOTS.indexOf(slot) !== -1) {     /* part of the hero set → photo-picker strip */
@@ -1282,12 +1281,6 @@
     const sec = el.closest('body > section');
     if (sec) {
       acts.push({ sep: true });
-      /* Add/Edit note for the AI — on any page the AI may actually write. Notes
-         carry their page and /implement edits the page it is given, so the only
-         remaining limit is ai_editable. */
-      if (pageAiEditable) {
-        acts.push({ label: comments.has(sec) ? '💬 Edit note' : '💬 Add note', fn: () => openComment(sec) });
-      }
       acts.push({ label: sec.hasAttribute('hidden') ? '👁 Show section' : '🙈 Hide section', fn: () => ctxToggleHideSection(sec) });
       acts.push({ label: '↑', title: 'Move this section up', fn: () => moveSection(sec, -1) });
       acts.push({ label: '↓', title: 'Move this section down', fn: () => moveSection(sec, 1) });
@@ -1407,6 +1400,7 @@
   function setFrameSrcdoc(srcdoc, y) {
     frame.addEventListener('load', function once() {
       frame.removeEventListener('load', once);
+      if (refining) wirePreviewPointing(frame.contentDocument);
       const s = () => { try { frame.contentWindow.scrollTo(0, y); } catch { /* ignore */ } };
       s(); [80, 250, 500].forEach((d) => setTimeout(s, d));
     });
@@ -1680,6 +1674,65 @@
 
   /* ---------- Conversational refine (chat with the AI) ---------- */
   let refinePanel = null;
+  let rfPointer = null;   /* what the owner last pointed at: {label, element, section} */
+
+  /* Describe what was tapped so the AI can find it in the file: the element itself when
+     it is something specific, and the top-level section it sits in. */
+  function pointerFor(el) {
+    const clip = (t, n) => String(t || '').replace(/\s+/g, ' ').trim().slice(0, n);
+    const cls = (e) => clip(String(e.className || '').split(/\s+/).filter((c) => c && !/^ec-/.test(c)).join(' '), 80);
+    const sec = el.closest('body > section, body > header, body > footer, header.nav, footer.footer');
+    const specific = (el !== sec && el.tagName !== 'BODY' && el.tagName !== 'HTML') ? el : null;
+    const section = sec ? { tag: sec.tagName.toLowerCase(), id: sec.id || '', cls: cls(sec),
+      heading: clip((sec.querySelector('h1, h2, h3') || {}).textContent, 90) } : null;
+    const element = specific ? { tag: specific.tagName.toLowerCase(), text: clip(specific.textContent, 90), cls: cls(specific),
+      src: specific.getAttribute('src') || '', href: specific.getAttribute('href') || '' } : null;
+    const secName = sec ? (sec.tagName === 'HEADER' ? 'the header' : sec.tagName === 'FOOTER' ? 'the footer'
+      : '“' + clip(sectionLabel(sec), 40) + '”') : '';
+    let what = '';
+    if (element) {
+      const t = clip(element.text, 38);
+      what = element.tag === 'img' ? 'a photo'
+        : (element.tag === 'a' || element.tag === 'button') ? (t ? '“' + t + '” button' : 'a button')
+        : /^h[1-6]$/.test(element.tag) ? (t ? 'the heading “' + t + '”' : 'a heading')
+        : t ? '“' + t + (element.text.length > 38 ? '…' : '') + '”' : 'this part';
+    }
+    const label = what && secName ? what + ' in ' + secName : (what || secName || 'this part of the page');
+    return { label, element, section };
+  }
+  function setRfPointer(p) {
+    rfPointer = p;
+    if (!refinePanel) return;
+    const box = refinePanel.querySelector('#ecRfAbout');
+    box.hidden = !p;
+    if (p) box.querySelector('#ecRfAboutTxt').textContent = '📍 About: ' + p.label;
+  }
+  /* In the Refine preview, tapping any part of the page points at it (links don't navigate). */
+  function wirePreviewPointing(doc) {
+    if (!doc || doc.__ecPointing) return;
+    doc.__ecPointing = true;
+    const st = doc.createElement('style');
+    st.textContent = 'body *:hover{outline:2px dashed rgba(99,102,241,.55);outline-offset:2px;cursor:pointer}' +
+                     '[data-ec-pointed]{outline:3px solid #6366f1 !important;outline-offset:3px}';
+    doc.head.appendChild(st);
+    doc.addEventListener('click', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const el = e.target && e.target.nodeType === 1 ? e.target : (e.target && e.target.parentElement);
+      if (!el || el === doc.body || el === doc.documentElement) return;
+      doc.querySelectorAll('[data-ec-pointed]').forEach((x) => x.removeAttribute('data-ec-pointed'));
+      el.setAttribute('data-ec-pointed', '');
+      setRfPointer(pointerFor(el));
+      const inp = refinePanel && refinePanel.querySelector('#ecRfInput');
+      if (inp) inp.focus();
+    }, true);
+  }
+  /* "💬 Ask AI about this" from the tap menu. */
+  async function askAiAbout(el) {
+    const p = pointerFor(el);
+    if (!refining && !(await openRefine())) return;
+    setRfPointer(p);
+    refinePanel.querySelector('#ecRfInput').focus();
+  }
   function buildRefinePanel() {
     if (refinePanel) return refinePanel;
     const p = document.createElement('div');
@@ -1690,6 +1743,8 @@
         '<button type="button" class="ec-rf-x" id="ecRfClose" aria-label="Close">✕</button></div>' +
       '<div class="ec-rf-msgs" id="ecRfMsgs"></div>' +
       '<div class="ec-rf-scope" id="ecRfScope"></div>' +
+      '<div class="ec-rf-about" id="ecRfAbout" hidden><span id="ecRfAboutTxt"></span>' +
+        '<button type="button" class="ec-rf-about-x" id="ecRfAboutX" title="Stop pointing — talk about the whole page">✕</button></div>' +
       '<div class="ec-rf-row"><textarea class="ec-rf-input" id="ecRfInput" rows="2" ' +
         'placeholder="Tell me what to change… e.g. “make the headline bigger”"></textarea>' +
         '<button type="button" class="ec-rf-send" id="ecRfSend">Send</button></div>' +
@@ -1704,6 +1759,10 @@
     p.querySelector('#ecRfClose').addEventListener('click', () => closeRefineAsk());
     p.querySelector('#ecRfDiscard').addEventListener('click', () => closeRefineAsk());
     p.querySelector('#ecRfPublish').addEventListener('click', publishRefine);
+    p.querySelector('#ecRfAboutX').addEventListener('click', () => {
+      setRfPointer(null);
+      try { frame.contentDocument.querySelectorAll('[data-ec-pointed]').forEach((x) => x.removeAttribute('data-ec-pointed')); } catch (e) { /* ignore */ }
+    });
     return p;
   }
   function addRefineMsg(role, text) {
@@ -1732,6 +1791,12 @@
     if (el) el.textContent = '📐 Your next message changes: ' + tierLabel(deviceTier()) + ' (' + refineScopeInfo().label + ' view)';
   }
   async function openRefine() {
+    /* Refine swaps the live page for a preview of the SAVED page, so unsaved typing
+       would vanish without a word. Ask for a save first. */
+    if (dirty.size || linkEdits.size || sectionsDirty || styleDirty) {
+      await ecAlert('Save your changes first (💾 Save) — the AI works on the saved page, and unsaved edits would be lost.', 'Save first');
+      return false;
+    }
     if (linkMode) setLinkMode(false);
     if (imgMode) setImgMode(false);
     if (secMode) setSecMode(false);
@@ -1745,13 +1810,15 @@
     refinePanel.querySelector('#ecRfMsgs').innerHTML = '';
     refinePanel.querySelector('#ecRfCost').textContent = '';
     refinePanel.querySelector('#ecRfPublish').disabled = true;
-    addRefineMsg('ai', 'Hi! Tell me what to tweak — e.g. “make the headline bigger”, then “now more orange”. I’ll show each change right here. Nothing goes live until you press 💾 Save changes.');
+    addRefineMsg('ai', 'Hi! Tap any part of the page to point at it, then tell me what to change — e.g. “make this shorter”, then “a bit darker”. I’ll show each change right here. Nothing goes live until you press 💾 Save changes.');
+    setRfPointer(null);
     refinePanel.hidden = false;
     updateRefineScope();
     /* show the current page as a static preview we’ll update each turn — keep scroll */
     const y = frameScrollY();
     setFrameSrcdoc(await buildPreviewSrcdoc({}), y);
     setTimeout(() => refinePanel.querySelector('#ecRfInput').focus(), 60);
+    return true;
   }
   /* Tear the refine session down. Callers fall into two kinds, and they must
      behave differently:
@@ -1789,14 +1856,14 @@
     const scope = refineScopeInfo();   /* device this message targets, captured at send time */
     const om = addRefineMsg('owner', text);
     const tag = document.createElement('div'); tag.className = 'ec-rf-scopetag';
-    tag.textContent = '→ ' + tierLabel(scope.tier);
+    tag.textContent = '→ ' + tierLabel(scope.tier) + (rfPointer ? ' · 📍 ' + rfPointer.label : '');
     om.appendChild(tag);
     const thinking = addRefineMsg('ai', '…');
     thinking.classList.add('ec-rf-thinking');
     try {
       const r = await fetch(API + 'refine/message', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: key, text, device: scope.label, tier: scope.tier, maxWidth: scope.maxWidth, model: getAiModel(), page: currentPage }),
+        body: JSON.stringify({ password: key, text, device: scope.label, tier: scope.tier, maxWidth: scope.maxWidth, model: getAiModel(), page: currentPage, pointer: rfPointer }),
       });
       const txt = await r.text();
       if (!r.ok) throw new Error(txt || r.status);
@@ -2046,8 +2113,8 @@
             '• <b>🔗 Link</b> — change where a button or link goes.<br>' +
             '• <b>🎨 Style</b> — change its color, size, or spacing.<br>' +
             '• <b>🙈 Hide / ↑ ↓</b> — hide or reorder a whole section.<br>' +
-            '• <b>💬 Add note</b> — (on a section) jot a change for the AI, then press <b>🤖 Apply notes</b>.</li>' +
-          '<li><b>🪄 Refine with AI</b> — just chat: “make the headline bigger”, “now more orange”. See each change, then press <b>💾 Save changes</b>.</li>' +
+            '• <b>💬 Ask AI about this</b> — point at it and say what to change; you see it before it goes live.</li>' +
+          '<li><b>🪄 Refine with AI</b> — just chat: tap any part of the page to point at it, then “make this bigger”, “now more orange”. See each change, then press <b>💾 Save changes</b>.</li>' +
           '<li><b>↩ Undo / 🕘 History</b> — step back, or jump to any earlier version.</li>' +
         '</ul>' +
         '<p class="ec-help-foot">Most changes go live when you press <b>💾 Save changes</b>. Switch <b>Desktop / Phone</b> at the top to check how it looks on each. Nothing is permanent — Undo always has your back.</p>' +
@@ -2262,4 +2329,4 @@
      Keep this close in the LAST numbered file. */
 })();
 
-/* build 20260924-222739 */
+/* build 20260924-225211 */
