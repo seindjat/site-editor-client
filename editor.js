@@ -1687,8 +1687,10 @@
       heading: clip((sec.querySelector('h1, h2, h3') || {}).textContent, 90) } : null;
     const element = specific ? { tag: specific.tagName.toLowerCase(), text: clip(specific.textContent, 90), cls: cls(specific),
       src: specific.getAttribute('src') || '', href: specific.getAttribute('href') || '' } : null;
+    /* the section's visible heading reads better than its id ("options") */
+    const short = (t) => { t = clip(t, 200); return t.length > 38 ? t.slice(0, 36).replace(/\s+\S*$/, '') + '…' : t; };
     const secName = sec ? (sec.tagName === 'HEADER' ? 'the header' : sec.tagName === 'FOOTER' ? 'the footer'
-      : '“' + clip(sectionLabel(sec), 40) + '”') : '';
+      : '“' + short((section && section.heading) || sectionLabel(sec)) + '”') : '';
     let what = '';
     if (element) {
       const t = clip(element.text, 38);
@@ -2329,4 +2331,4 @@
      Keep this close in the LAST numbered file. */
 })();
 
-/* build 20260924-225211 */
+/* build 20260924-225525 */
