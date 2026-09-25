@@ -609,10 +609,39 @@
     if (eb) return eb.textContent.trim().slice(0, 60);
     return sec.tagName.toLowerCase();
   }
-  /* make a panel draggable by a handle element (used for the note window so the
-     owner can pull it aside and see the section behind it) */
-  function makeDraggable(panel, handle) {
+  /* make a panel draggable by a handle element (the note window, and the Refine chat so
+     the owner can pull it aside and watch the page change behind it). With a storeKey
+     the spot is kept for this tab, so it survives the reload after Save. Double-click
+     the handle to put the panel back where it started. Returns {place} so a panel that
+     was hidden can be re-clamped when it is shown again (the window may have shrunk). */
+  function makeDraggable(panel, handle, storeKey) {
     let tx = 0, ty = 0, sx = 0, sy = 0, startX = 0, startY = 0, dragging = false;
+    /* clamp so the draggable HEADER always stays reachable: keep the top edge on-screen
+       and at least ~120px of the window horizontally visible */
+    const place = () => {
+      panel.style.transform = 'translate(' + tx + 'px,' + ty + 'px)';
+      const r = panel.getBoundingClientRect(), edge = 120;
+      if (!r.width) return;                      /* hidden: clamped again when shown */
+      if (r.top < 8) ty += 8 - r.top;
+      else if (r.top > window.innerHeight - 40) ty += (window.innerHeight - 40) - r.top;
+      if (r.right < edge) tx += edge - r.right;
+      else if (r.left > window.innerWidth - edge) tx += (window.innerWidth - edge) - r.left;
+      panel.style.transform = 'translate(' + tx + 'px,' + ty + 'px)';
+    };
+    const save = () => {
+      if (storeKey) try { sessionStorage.setItem(storeKey, JSON.stringify({ x: tx, y: ty })); } catch { /* ignore */ }
+    };
+    /* The Refine panel sits on its bottom edge and grows UPWARD as the chat gets longer —
+       dragged near the top, a few messages would push its header (the only handle, and
+       the ✕) off-screen. Re-clamp whenever its size changes. */
+    if (window.ResizeObserver) new ResizeObserver(() => { if (!dragging && (tx || ty)) place(); }).observe(panel);
+    if (storeKey) {
+      try {
+        const s = JSON.parse(sessionStorage.getItem(storeKey) || 'null');
+        if (s) { tx = Number(s.x) || 0; ty = Number(s.y) || 0; place(); }
+      } catch { /* ignore */ }
+      window.addEventListener('resize', place);
+    }
     handle.addEventListener('pointerdown', (e) => {
       if (e.target.closest('button, textarea, input, a')) return;
       dragging = true; sx = e.clientX; sy = e.clientY; startX = tx; startY = ty;
@@ -622,23 +651,21 @@
     handle.addEventListener('pointermove', (e) => {
       if (!dragging) return;
       tx = startX + e.clientX - sx; ty = startY + e.clientY - sy;
-      panel.style.transform = 'translate(' + tx + 'px,' + ty + 'px)';
-      /* clamp so the draggable HEADER always stays reachable: keep the top edge on-screen
-         and at least ~120px of the window horizontally visible */
-      const r = panel.getBoundingClientRect(), edge = 120;
-      if (r.top < 8) ty += 8 - r.top;
-      else if (r.top > window.innerHeight - 40) ty += (window.innerHeight - 40) - r.top;
-      if (r.right < edge) tx += edge - r.right;
-      else if (r.left > window.innerWidth - edge) tx += (window.innerWidth - edge) - r.left;
-      panel.style.transform = 'translate(' + tx + 'px,' + ty + 'px)';
+      place();
     });
     const end = (e) => {
       if (!dragging) return;
       dragging = false;
       try { handle.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
+      save();
     };
     handle.addEventListener('pointerup', end);
     handle.addEventListener('pointercancel', end);
+    handle.addEventListener('dblclick', (e) => {
+      if (e.target.closest('button, textarea, input, a')) return;
+      tx = 0; ty = 0; place(); save();
+    });
+    return { place };
   }
   function openNoteModal(label, dev, initial, cb) {
     const ov = document.createElement('div');
@@ -1685,7 +1712,7 @@
   }
 
   /* ---------- Conversational refine (chat with the AI) ---------- */
-  let refinePanel = null;
+  let refinePanel = null, rfDrag = null;
   let rfPointer = null;   /* what the owner last pointed at: {label, element, section} */
 
   /* Describe what was tapped so the AI can find it in the file: the element itself when
@@ -1755,7 +1782,8 @@
     const p = document.createElement('div');
     p.className = 'ec-refine-panel'; p.hidden = true;
     p.innerHTML =
-      '<div class="ec-rf-head"><strong>🪄 Refine with AI</strong>' +
+      '<div class="ec-rf-head" title="Drag to move · double-click to put it back">' +
+        '<span class="ec-rf-grip" aria-hidden="true">⠿</span><strong>🪄 Refine with AI</strong>' +
         '<span class="ec-rf-cost" id="ecRfCost"></span>' +
         '<button type="button" class="ec-rf-x" id="ecRfClose" aria-label="Close">✕</button></div>' +
       '<div class="ec-rf-msgs" id="ecRfMsgs"></div>' +
@@ -1770,6 +1798,8 @@
         '<button type="button" class="ec-rf-publish" id="ecRfPublish" disabled>💾 Save changes</button></div>';
     shell.appendChild(p);
     refinePanel = p;
+    /* drag it by the header to watch the page change behind it */
+    rfDrag = makeDraggable(p, p.querySelector('.ec-rf-head'), CFG.storePrefix + 'RfPos');
     const input = p.querySelector('#ecRfInput');
     p.querySelector('#ecRfSend').addEventListener('click', sendRefine);
     input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendRefine(); } });
@@ -1830,6 +1860,7 @@
     addRefineMsg('ai', 'Hi! Tap any part of the page to point at it (that’s faster and much cheaper than asking about the whole page), then tell me what to change — e.g. “make this shorter”, then “a bit darker”. I’ll show each change right here. Nothing goes live until you press 💾 Save changes.');
     setRfPointer(null);
     refinePanel.hidden = false;
+    if (rfDrag) rfDrag.place();   /* back on-screen if the window shrank while it was closed */
     updateRefineScope();
     /* show the current page as a static preview we’ll update each turn — keep scroll */
     const y = frameScrollY();
@@ -2346,4 +2377,4 @@
      Keep this close in the LAST numbered file. */
 })();
 
-/* build 20260924-233934 */
+/* build 20260925-075710 */
