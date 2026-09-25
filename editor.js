@@ -1401,7 +1401,10 @@
     frame.addEventListener('load', function once() {
       frame.removeEventListener('load', once);
       if (refining) wirePreviewPointing(frame.contentDocument);
-      const s = () => { try { frame.contentWindow.scrollTo(0, y); } catch { /* ignore */ } };
+      /* 'instant', like the reload restore above: these sites set html{scroll-behavior:smooth},
+         and a plain scrollTo in the srcdoc preview never moved, so every Refine preview
+         jumped to the top of the page and the owner lost the part they were changing. */
+      const s = () => { try { frame.contentWindow.scrollTo({ top: y, left: 0, behavior: 'instant' }); } catch { /* ignore */ } };
       s(); [80, 250, 500].forEach((d) => setTimeout(s, d));
     });
     frame.srcdoc = srcdoc;
@@ -2331,4 +2334,4 @@
      Keep this close in the LAST numbered file. */
 })();
 
-/* build 20260924-225525 */
+/* build 20260924-225743 */
