@@ -1724,19 +1724,29 @@
   function pointerFor(el) {
     const clip = (t, n) => String(t || '').replace(/\s+/g, ' ').trim().slice(0, n);
     const cls = (e) => clip(String(e.className || '').split(/\s+/).filter((c) => c && !/^ec-/.test(c)).join(' '), 80);
-    const sec = el.closest('body > section, body > header, body > footer, header.nav, footer.footer');
+    /* the editor's own panels in the page carry only ec- classes; a site block being
+       hovered has ec-ctx-hover next to its own classes, so it still counts */
+    const own = (e) => e.classList.length > 0 && [...e.classList].every((c) => /^ec-/.test(c));
+    /* body > div: strips that sit outside any section (metisconst's trust bar, the top
+       bars) — pointing there used to send the AI the whole page */
+    const BLOCKS = 'body > section, body > header, body > footer, body > div';
+    let sec = el.closest(BLOCKS + ', header.nav, footer.footer');
+    if (sec && own(sec)) sec = null;
     const specific = (el !== sec && el.tagName !== 'BODY' && el.tagName !== 'HTML') ? el : null;
     /* n = its position among the page's top-level blocks: the server sends the AI just
        this block, and n still finds it after an earlier turn rewrote its heading */
-    const tops = [...el.ownerDocument.querySelectorAll('body > section, body > header, body > footer')];
+    const tops = [...el.ownerDocument.querySelectorAll(BLOCKS)].filter((e) => !own(e));
     const section = sec ? { tag: sec.tagName.toLowerCase(), id: sec.id || '', cls: cls(sec),
       heading: clip((sec.querySelector('h1, h2, h3') || {}).textContent, 90), n: tops.indexOf(sec) } : null;
     const element = specific ? { tag: specific.tagName.toLowerCase(), text: clip(specific.textContent, 90), cls: cls(specific),
       src: specific.getAttribute('src') || '', href: specific.getAttribute('href') || '' } : null;
     /* the section's visible heading reads better than its id ("options") */
     const short = (t) => { t = clip(t, 200); return t.length > 38 ? t.slice(0, 36).replace(/\s+\S*$/, '') + '…' : t; };
-    const secName = sec ? (sec.tagName === 'HEADER' ? 'the header' : sec.tagName === 'FOOTER' ? 'the footer'
-      : '“' + short((section && section.heading) || sectionLabel(sec)) + '”') : '';
+    /* a strip with no heading is named by its class ("the trustbar"), never "div" */
+    const divName = (e) => { const c = cls(e).split(' ')[0]; return c ? 'the ' + c.replace(/[-_]+/g, ' ') : 'this strip'; };
+    const secName = !sec ? '' : sec.tagName === 'HEADER' ? 'the header' : sec.tagName === 'FOOTER' ? 'the footer'
+      : (sec.tagName === 'DIV' && !(section && section.heading)) ? divName(sec)
+      : '“' + short((section && section.heading) || sectionLabel(sec)) + '”';
     let what = '';
     if (element) {
       const t = clip(element.text, 38);
@@ -2465,4 +2475,4 @@
      Keep this close in the LAST numbered file. */
 })();
 
-/* build 20260926-201102 */
+/* build 20260926-202201 */
