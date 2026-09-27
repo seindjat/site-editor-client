@@ -1905,14 +1905,49 @@
     refinePanel.querySelector('#ecRfMsgs').innerHTML = '';
     refinePanel.querySelector('#ecRfCost').textContent = '';
     refinePanel.querySelector('#ecRfPublish').disabled = true;
-    addRefineMsg('ai', 'Hi! Tap any part of the page to point at it (that’s faster and much cheaper than asking about the whole page), then tell me what to change — e.g. “make this shorter”, then “a bit darker”. I’ll show each change right here. Nothing goes live until you press 💾 Save changes.');
+    /* Unsaved AI changes from earlier (another tab, a closed window, or a server restart —
+       the server keeps them on disk now): pick them up with their chat instead of silently
+       building new changes on top of ones the owner can't see. A leftover with nothing
+       unsaved is dropped, so a stale copy of the page never becomes the AI's starting point. */
+    let st = null;
+    try {
+      const r = await fetch(API + 'refine/state', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: key }),
+      });
+      if (r.ok) st = await r.json();
+    } catch (e) { /* offline: start fresh */ }
+    const resume = !!(st && st.dirty && st.page === currentPage && st.files && !st.stale);
+    if (resume) {
+      (st.history || []).forEach((h) => {
+        /* the server stores what was pointed at as " [pointing at: …]" — show it as the usual tag */
+        const pm = h.role === 'owner' && /^([\s\S]*?) \[pointing at: (.*)\]$/.exec(h.text);
+        const msg = addRefineMsg(h.role === 'owner' ? 'owner' : 'ai', pm ? pm[1] : h.text);
+        if (pm) { const tag = document.createElement('div'); tag.className = 'ec-rf-scopetag'; tag.textContent = '📍 ' + pm[2]; msg.appendChild(tag); }
+      });
+      addRefineMsg('ai', 'Welcome back — the page shows the AI changes you haven’t saved yet. Keep going, press 💾 Save changes, or ✗ Discard.');
+      refineDirty = true;
+      refinePanel.querySelector('#ecRfPublish').disabled = false;
+      if (st.totalCost) refinePanel.querySelector('#ecRfCost').textContent = 'Total ≈ ' + fmtCost(st.totalCost);
+    } else {
+      if (st && st.active && !(st.dirty && st.page !== currentPage)) {
+        /* nothing unsaved worth keeping here (unsaved work on ANOTHER page is left alone —
+           the server will say so if the owner asks on this page) */
+        await fetch(API + 'refine/discard', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: key }),
+        }).catch(() => {});
+      }
+      if (st && st.dirty && st.stale && st.page === currentPage) {
+        addRefineMsg('ai', 'You had unsaved AI changes from earlier, but this page has changed since (an Undo, a restore or a save elsewhere), so they could no longer be saved safely. Starting fresh.');
+      }
+      addRefineMsg('ai', 'Hi! Tap any part of the page to point at it (that’s faster and much cheaper than asking about the whole page), then tell me what to change — e.g. “make this shorter”, then “a bit darker”. I’ll show each change right here. Nothing goes live until you press 💾 Save changes.');
+    }
     setRfPointer(null);
     refinePanel.hidden = false;
     if (rfDrag) rfDrag.place();   /* back on-screen if the window shrank while it was closed */
     updateRefineScope();
-    /* show the current page as a static preview we’ll update each turn — keep scroll */
+    /* show the page (or the unsaved AI version of it) as a static preview we’ll update each turn — keep scroll */
     const y = frameScrollY();
-    setFrameSrcdoc(await buildPreviewSrcdoc({}), y);
+    setFrameSrcdoc(await buildPreviewSrcdoc(resume ? st.files : {}), y);
     setTimeout(() => refinePanel.querySelector('#ecRfInput').focus(), 60);
     return true;
   }
@@ -2430,4 +2465,4 @@
      Keep this close in the LAST numbered file. */
 })();
 
-/* build 20260925-082239 */
+/* build 20260926-201102 */
